@@ -7,6 +7,7 @@ import {
   CPL_HOSTED_OAUTH_COOKIE,
 } from "../../packages/security/src/hosted-authentication";
 import { HostedAuthMemoryStore } from "../fixtures/hosted-auth-memory-store";
+import { CplHostedAuthenticationError } from "../../packages/security/src/google-oidc";
 
 const state = vi.hoisted(() => ({
   runtime: null as CplHostedRuntime | null,
@@ -91,6 +92,57 @@ function request(path: string, method = "POST", body?: string, extra: Record<str
 }
 
 describe("Hosted authentication HTTP boundaries", () => {
+  it("logs only allowlisted callback categories while preserving the redacted HTTP contract", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      state.failure = new CplHostedAuthenticationError(
+        "CPL_IDENTITY_ASSERTION_REJECTED",
+        401,
+        "TOKEN_ENDPOINT_REJECTED",
+      );
+      const result = await hostedGoogleCallback(
+        request("/api/auth/google/callback?code=private-code&state=private-state", "GET"),
+      );
+      expect(result.status).toBe(401);
+      expect(await result.json()).toEqual({ ok: false, code: "CPL_IDENTITY_ASSERTION_REJECTED" });
+      expect(warning).toHaveBeenLastCalledWith(
+        JSON.stringify({
+          event: "cpl_google_callback_rejected",
+          code: "CPL_IDENTITY_ASSERTION_REJECTED",
+          diagnosticCode: "TOKEN_ENDPOINT_REJECTED",
+        }),
+      );
+      state.failure = new Error("private-code secret-client-value private-state");
+      await hostedGoogleCallback(
+        request("/api/auth/google/callback?code=private-code&state=private-state", "GET"),
+      );
+      expect(warning).toHaveBeenLastCalledWith(
+        JSON.stringify({
+          event: "cpl_google_callback_rejected",
+          code: "CPL_HOSTED_AUTH_UNAVAILABLE",
+          diagnosticCode: null,
+        }),
+      );
+      state.failure = Object.assign(new CplHostedAuthenticationError("private-code"), {
+        diagnosticCode: "secret-client-value",
+      });
+      await hostedGoogleCallback(
+        request("/api/auth/google/callback?code=private-code&state=private-state", "GET"),
+      );
+      expect(warning).toHaveBeenLastCalledWith(
+        JSON.stringify({
+          event: "cpl_google_callback_rejected",
+          code: "CPL_HOSTED_AUTH_UNAVAILABLE",
+          diagnosticCode: null,
+        }),
+      );
+      expect(JSON.stringify(warning.mock.calls)).not.toMatch(
+        /private-code|private-state|secret-client-value/,
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
   it("sets secure host cookies and private responses for the bound OAuth callback", async () => {
     const begin = await hostedGoogleStart(request("/api/auth/google/start"));
     expect(begin.status).toBe(303);

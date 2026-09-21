@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { PgDatabaseAdapter } from "../../packages/database/src/pg-adapter.ts";
+import { PgSqlDatabaseAdapter } from "../../packages/database/src/pg-sql-adapter.ts";
 import { processHostedJobs } from "../../packages/database/src/hosted-workflow.ts";
 
 export const HOSTED_JOB_LIMIT = 1;
@@ -34,7 +34,7 @@ export function workerDatabaseConnectionString(value) {
 /** One invocation owns one short-lived connection pool. Its dedicated role has
  * only the narrowly reviewed job policies, never superuser/BYPASSRLS rights. */
 export function createHostedScheduledHandler({
-  createDatabase = (configuration) => new PgDatabaseAdapter(configuration),
+  createDatabase = (configuration) => new PgSqlDatabaseAdapter(configuration),
   processJobs = processHostedJobs,
   claimId = randomUUID,
   logger = console,

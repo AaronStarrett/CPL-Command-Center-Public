@@ -201,6 +201,7 @@
 | `apps/web/app/workspace/page.tsx`                                                           | Reviewed source publication |
 | `apps/web/app/workspace/workspace.module.css`                                               | Reviewed source publication |
 | `apps/web/app/workspace/workspace.tsx`                                                      | Reviewed source publication |
+| `apps/web/cloudflare-worker.mjs`                                                            | Reviewed source publication |
 | `apps/web/components/ai-command-motion-workspace.tsx`                                       | Reviewed source publication |
 | `apps/web/components/ai-command-workspace.tsx`                                              | Reviewed source publication |
 | `apps/web/components/ai-command.module.css`                                                 | Reviewed source publication |
@@ -274,6 +275,8 @@
 | `apps/web/lib/auth/personas.ts`                                                             | Reviewed source publication |
 | `apps/web/lib/auth/session-store.ts`                                                        | Reviewed source publication |
 | `apps/web/lib/browser-realtime-voice.ts`                                                    | Reviewed source publication |
+| `apps/web/lib/cloudflare-dispatch.ts`                                                       | Reviewed source publication |
+| `apps/web/lib/cloudflare-next-response.mjs`                                                 | Reviewed source publication |
 | `apps/web/lib/commercial-access.ts`                                                         | Reviewed source publication |
 | `apps/web/lib/commercial-presentation.ts`                                                   | Reviewed source publication |
 | `apps/web/lib/company-contacts.ts`                                                          | Reviewed source publication |
@@ -495,6 +498,7 @@
 | `packages/database/src/operations-repository.ts`                                            | Reviewed source publication |
 | `packages/database/src/operations-seed.ts`                                                  | Reviewed source publication |
 | `packages/database/src/pg-adapter.ts`                                                       | Reviewed source publication |
+| `packages/database/src/pg-sql-adapter.ts`                                                   | Reviewed source publication |
 | `packages/database/src/pglite-adapter.ts`                                                   | Reviewed source publication |
 | `packages/database/src/phase1-repository.ts`                                                | Reviewed source publication |
 | `packages/database/src/production-verification.ts`                                          | Reviewed source publication |
@@ -626,6 +630,7 @@
 | `scripts/hosted-actions-parked.mjs`                                                         | Reviewed source publication |
 | `scripts/hosted-database.ts`                                                                | Reviewed source publication |
 | `scripts/hosting-notices.mjs`                                                               | Reviewed source publication |
+| `scripts/hosting-static-shell.mjs`                                                          | Reviewed source publication |
 | `scripts/install-git-hooks.mjs`                                                             | Reviewed source publication |
 | `scripts/local-storage-audit.mjs`                                                           | Reviewed source publication |
 | `scripts/next-build-filesystem.mjs`                                                         | Reviewed source publication |
@@ -713,6 +718,7 @@
 | `tests/bootstrap/cpl-local.node-test.mjs`                                                   | Reviewed source publication |
 | `tests/bootstrap/cpl-workspace-copies.node-test.mjs`                                        | Reviewed source publication |
 | `tests/bootstrap/hosting-notices.node-test.mjs`                                             | Reviewed source publication |
+| `tests/bootstrap/hosting-static-shell.node-test.mjs`                                        | Reviewed source publication |
 | `tests/bootstrap/next-build-filesystem.node-test.mjs`                                       | Reviewed source publication |
 | `tests/bootstrap/precommit-environment.node-test.mjs`                                       | Reviewed source publication |
 | `tests/bootstrap/publication-export.node-test.mjs`                                          | Reviewed source publication |
@@ -837,6 +843,7 @@
 | `tests/unit/authentication.test.ts`                                                         | Reviewed source publication |
 | `tests/unit/browser-realtime-voice.test.ts`                                                 | Reviewed source publication |
 | `tests/unit/cloudflare-hosted-worker.test.mjs`                                              | Reviewed source publication |
+| `tests/unit/cloudflare-web-dispatch.test.ts`                                                | Reviewed source publication |
 | `tests/unit/config-services.test.ts`                                                        | Reviewed source publication |
 | `tests/unit/content-safety.test.ts`                                                         | Reviewed source publication |
 | `tests/unit/cpl-cost-controls.test.mjs`                                                     | Reviewed source publication |
@@ -856,6 +863,7 @@
 | `tests/unit/next-no-env.test.mjs`                                                           | Reviewed source publication |
 | `tests/unit/openai-administration-backend.test.ts`                                          | Reviewed source publication |
 | `tests/unit/owner-tools.test.mjs`                                                           | Reviewed source publication |
+| `tests/unit/pg-sql-adapter.test.ts`                                                         | Reviewed source publication |
 | `tests/unit/pg-transaction-cleanup.test.ts`                                                 | Reviewed source publication |
 | `tests/unit/phase12-verifier-environment.test.mjs`                                          | Reviewed source publication |
 | `tests/unit/phase131-persona-brand.test.ts`                                                 | Reviewed source publication |

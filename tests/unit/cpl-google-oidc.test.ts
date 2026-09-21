@@ -164,4 +164,49 @@ describe("Google OIDC cryptographic assertion boundary", () => {
       exchange.exchangeCode({ code: "synthetic-code", verifier: "v".repeat(43), nonce }),
     ).rejects.toMatchObject({ message: "CPL_IDENTITY_ASSERTION_REJECTED" });
   });
+
+  it("retains only a fixed failure category, never provider secrets or network error details", async () => {
+    const failures = [
+      [new Response("provider-secret-token", { status: 400 }), "TOKEN_ENDPOINT_REJECTED"],
+      [new Response("{provider-secret-token"), "TOKEN_RESPONSE_INVALID_JSON"],
+      [
+        new Response(JSON.stringify({ access_token: "provider-secret-token" })),
+        "TOKEN_RESPONSE_MISSING_ASSERTION",
+      ],
+      [new Error("network error with provider-secret-token"), "TOKEN_REQUEST_FAILED"],
+    ] as const;
+    for (const [failure, diagnosticCode] of failures) {
+      const exchange = new GoogleOidcAdapter(configuration, {
+        fetch: async () => {
+          if (failure instanceof Error) throw failure;
+          return failure;
+        },
+      });
+      const error = await exchange
+        .exchangeCode({ code: "synthetic-code", verifier: "v".repeat(43), nonce })
+        .catch((value) => value as Error);
+      expect(error).toMatchObject({ code: "CPL_IDENTITY_ASSERTION_REJECTED", diagnosticCode });
+      expect(JSON.stringify(error)).not.toMatch(
+        /provider-secret-token|synthetic-code|synthetic-test-secret/,
+      );
+      expect(error).not.toHaveProperty("cause");
+    }
+  });
+
+  it("preserves a fixed JWT failure category through token exchange without leaking signed claims", async () => {
+    const exchange = new GoogleOidcAdapter(configuration, {
+      keys: createLocalJWKSet({
+        keys: [{ ...(await exportJWK(keys.publicKey)), kid: "test-rsa" }],
+      }),
+      now: () => now,
+      fetch: async () =>
+        new Response(JSON.stringify({ id_token: await assertion({ exp: seconds - 100 }) })),
+    });
+    await expect(
+      exchange.exchangeCode({ code: "synthetic-code", verifier: "v".repeat(43), nonce }),
+    ).rejects.toMatchObject({
+      code: "CPL_IDENTITY_ASSERTION_REJECTED",
+      diagnosticCode: "JWT_EXPIRED",
+    });
+  });
 });

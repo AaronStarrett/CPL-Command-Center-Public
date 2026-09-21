@@ -16,6 +16,7 @@ import { synchronizeWorkspaceCopies } from "./cpl-workspace-copies.mjs";
 import { assertUnredirectedPath, verifyExport } from "./publication-export.mjs";
 import { prohibitedRepositoryPathReason } from "./repository-data-policy.mjs";
 import { writeHostingNotices } from "./hosting-notices.mjs";
+import { prepareHostedWorkspaceAsset } from "./hosting-static-shell.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicOrigin = "https://github.com/AaronStarrett/CPL-Command-Center-Public.git";
@@ -125,9 +126,11 @@ function executable(packageName) {
 
 export function hostingEnvironment(repositoryRoot, source = process.env) {
   const environment = createSafeEnvironment(repositoryRoot, source);
-  const pathKey = Object.keys(environment).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  environment[pathKey] =
-    path.dirname(process.execPath) + path.delimiter + (environment[pathKey] ?? "");
+  const inheritedPath = environment.Path ?? environment.PATH ?? "";
+  delete environment.Path;
+  delete environment.PATH;
+  environment[process.platform === "win32" ? "Path" : "PATH"] =
+    path.dirname(process.execPath) + path.delimiter + inheritedPath;
   return {
     ...environment,
     NODE_ENV: "production",
@@ -248,6 +251,7 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
     windowsHide: true,
   });
   let staticCachePrepared = false;
+  let staticWorkspace = null;
   let thirdPartyNotices = null;
   if (options.action === "build" && result.status === 0) {
     // The adapter creates cache files separately from its assets. Its official
@@ -260,6 +264,14 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
       windowsHide: true,
     });
     staticCachePrepared = result.status === 0;
+  }
+  if (options.action === "build" && result.status === 0) {
+    try {
+      staticWorkspace = prepareHostedWorkspaceAsset(root);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Workspace preparation failed.");
+      result = { ...result, status: 1, error: { code: "HOSTED_STATIC_WORKSPACE_INVALID" } };
+    }
   }
   if (options.action === "build" && result.status === 0) {
     const metafiles = [];
@@ -323,7 +335,9 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
     finalSourceFingerprint: finalFingerprint,
     sourceUnchanged,
     toolStatus: result.status === 0 ? "PASS" : "FAIL",
-    ...(options.action === "build" ? { staticCachePrepared, thirdPartyNotices } : {}),
+    ...(options.action === "build"
+      ? { staticCachePrepared, staticWorkspace, thirdPartyNotices }
+      : {}),
     publicMapping: boundary.repositoryId === publicId,
     node: process.version,
     adapter: pins["@opennextjs/cloudflare"],

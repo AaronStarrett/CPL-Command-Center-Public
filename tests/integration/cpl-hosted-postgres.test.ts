@@ -4,7 +4,7 @@ import { rootCertificates } from "node:tls";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PgDatabaseAdapter } from "../../packages/database/src/pg-adapter.js";
+import { PgSqlDatabaseAdapter as PgDatabaseAdapter } from "../../packages/database/src/pg-sql-adapter.js";
 import { migrateDatabase, verifyMigrations } from "../../packages/database/src/migrations.js";
 import { SqlCplHostedAuthStore } from "../../packages/database/src/hosted-auth-store.js";
 import {

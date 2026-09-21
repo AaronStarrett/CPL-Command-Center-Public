@@ -840,9 +840,9 @@
     },
     {
       "path": "apps/web/app/api/cpl/[...path]/route.ts",
-      "sha256": "774321ea3aa6129836b4c0114e2c3673d4d790ec8f3f3b68250645f345d1585d",
-      "sourceSha256": "774321ea3aa6129836b4c0114e2c3673d4d790ec8f3f3b68250645f345d1585d",
-      "size": 10604,
+      "sha256": "201a119bc0968b7fc6ab893580b8ef94f5b5d897436ae0dd91623fcbd29dac52",
+      "sourceSha256": "201a119bc0968b7fc6ab893580b8ef94f5b5d897436ae0dd91623fcbd29dac52",
+      "size": 11034,
       "adaptation": null
     },
     {
@@ -1235,6 +1235,13 @@
       "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
       "sourceSha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
       "size": 11,
+      "adaptation": null
+    },
+    {
+      "path": "apps/web/cloudflare-worker.mjs",
+      "sha256": "18558096696d43a895d4e7505aac4142bcbf706e32ef969b1ea4732e53d3c124",
+      "sourceSha256": "18558096696d43a895d4e7505aac4142bcbf706e32ef969b1ea4732e53d3c124",
+      "size": 1808,
       "adaptation": null
     },
     {
@@ -1749,6 +1756,20 @@
       "adaptation": null
     },
     {
+      "path": "apps/web/lib/cloudflare-dispatch.ts",
+      "sha256": "9948bec6471da67e7b752aacd1f400258866ba4ab861b56f1f608e520837a7ce",
+      "sourceSha256": "9948bec6471da67e7b752aacd1f400258866ba4ab861b56f1f608e520837a7ce",
+      "size": 6064,
+      "adaptation": null
+    },
+    {
+      "path": "apps/web/lib/cloudflare-next-response.mjs",
+      "sha256": "fc214902cc6018c2de9f0f4c7c18043430db89821ff8be239939592e09ac38d6",
+      "sourceSha256": "fc214902cc6018c2de9f0f4c7c18043430db89821ff8be239939592e09ac38d6",
+      "size": 243,
+      "adaptation": null
+    },
+    {
       "path": "apps/web/lib/commercial-access.ts",
       "sha256": "182488c67b6bad0648bf20de37614db0da3e4861df33e4711db7976ed809f7f2",
       "sourceSha256": "182488c67b6bad0648bf20de37614db0da3e4861df33e4711db7976ed809f7f2",
@@ -1890,16 +1911,16 @@
     },
     {
       "path": "apps/web/lib/hosted-auth-routes.ts",
-      "sha256": "bd11005f38356d1857d7a0fbea22943e1480acc66e51d72ed796316f498916f1",
-      "sourceSha256": "bd11005f38356d1857d7a0fbea22943e1480acc66e51d72ed796316f498916f1",
-      "size": 9283,
+      "sha256": "31e32abefb4cf56c1b6d8ef181a95f16bada39a2ac54a55aa8dc4d324838b8ae",
+      "sourceSha256": "31e32abefb4cf56c1b6d8ef181a95f16bada39a2ac54a55aa8dc4d324838b8ae",
+      "size": 10260,
       "adaptation": null
     },
     {
       "path": "apps/web/lib/hosted-auth.ts",
-      "sha256": "77a5f820087d2e8560d499f48ea2948c9fa1b65bce65ff97eb4be9c1f8b3f637",
-      "sourceSha256": "77a5f820087d2e8560d499f48ea2948c9fa1b65bce65ff97eb4be9c1f8b3f637",
-      "size": 6339,
+      "sha256": "ec2c38e7d1fd9795665f58401e8a4f61be6f3cb789274be868bdae61b545f7f4",
+      "sourceSha256": "ec2c38e7d1fd9795665f58401e8a4f61be6f3cb789274be868bdae61b545f7f4",
+      "size": 6794,
       "adaptation": null
     },
     {
@@ -2149,16 +2170,16 @@
     },
     {
       "path": "apps/web/wrangler.jsonc",
-      "sha256": "03fcb156fb601e17fae352183479e80f5685b59d6d4cb81600329b446f2ebe14",
-      "sourceSha256": "03fcb156fb601e17fae352183479e80f5685b59d6d4cb81600329b446f2ebe14",
-      "size": 800,
+      "sha256": "99634ac5017b82571451aea80a57f266ce9227eedd105e612a8d77f4080d48f0",
+      "sourceSha256": "99634ac5017b82571451aea80a57f266ce9227eedd105e612a8d77f4080d48f0",
+      "size": 938,
       "adaptation": null
     },
     {
       "path": "apps/worker/cloudflare-scheduler.mjs",
-      "sha256": "fbafa78eaa5daf93a6c9369f44ac7ad4e0473497df815997ee510e0b44cba48d",
-      "sourceSha256": "fbafa78eaa5daf93a6c9369f44ac7ad4e0473497df815997ee510e0b44cba48d",
-      "size": 3063,
+      "sha256": "9098e3658943091e36fe7ec4ee8805f154649956eb427828a01328ff936e4682",
+      "sourceSha256": "9098e3658943091e36fe7ec4ee8805f154649956eb427828a01328ff936e4682",
+      "size": 3073,
       "adaptation": null
     },
     {
@@ -2282,9 +2303,9 @@
     },
     {
       "path": "docs/FILE_INVENTORY.md",
-      "sha256": "8e36efb27cd4871a981dfb68abe895b63f8cfc9510017a6722aa0c2efc064fd4",
+      "sha256": "fd8bf0352942449f466aac843e414355770c748668cc9e3710d4ae747c23c2a3",
       "sourceSha256": null,
-      "size": 116323,
+      "size": 117331,
       "adaptation": "generated-public-metadata"
     },
     {
@@ -2296,16 +2317,16 @@
     },
     {
       "path": "docs/HOSTING_COMPATIBILITY.md",
-      "sha256": "d9cd22e73694b4262f71d31f3342de1f7e2d23bb5805a05901739ca3016320ec",
-      "sourceSha256": "d9cd22e73694b4262f71d31f3342de1f7e2d23bb5805a05901739ca3016320ec",
-      "size": 8207,
+      "sha256": "b0ef6a1433ffa7529ef457f1070dfee082dedcb2730a8d213779afbda0c288f9",
+      "sourceSha256": "b0ef6a1433ffa7529ef457f1070dfee082dedcb2730a8d213779afbda0c288f9",
+      "size": 9264,
       "adaptation": null
     },
     {
       "path": "docs/PUBLIC_DEPLOYMENT.md",
-      "sha256": "3669a20aca7e8acd2a7d9848749a062978a89889501c2e04e8512fda8e0cf9c9",
-      "sourceSha256": "3669a20aca7e8acd2a7d9848749a062978a89889501c2e04e8512fda8e0cf9c9",
-      "size": 5099,
+      "sha256": "5a99fffdb9fa4f984101a2c0a1cb91d6b19b548f1be37f078e43ca05d632d8c4",
+      "sourceSha256": "5a99fffdb9fa4f984101a2c0a1cb91d6b19b548f1be37f078e43ca05d632d8c4",
+      "size": 5812,
       "adaptation": null
     },
     {
@@ -3269,9 +3290,9 @@
     },
     {
       "path": "packages/database/src/hosted.ts",
-      "sha256": "aaec3f058e6e7fcb9188434edace7f6229966377907ca780dd80d1a90f95f628",
-      "sourceSha256": "aaec3f058e6e7fcb9188434edace7f6229966377907ca780dd80d1a90f95f628",
-      "size": 336,
+      "sha256": "3e26e13d26e5c67da4f515db2a333a888d1d66537096bef1b773c1e00dbadd3e",
+      "sourceSha256": "3e26e13d26e5c67da4f515db2a333a888d1d66537096bef1b773c1e00dbadd3e",
+      "size": 364,
       "adaptation": null
     },
     {
@@ -3339,9 +3360,16 @@
     },
     {
       "path": "packages/database/src/pg-adapter.ts",
-      "sha256": "a0f5d04a4f33969e32273505abcf21c508a89a759b656a50126c2648eafbd8ec",
-      "sourceSha256": "a0f5d04a4f33969e32273505abcf21c508a89a759b656a50126c2648eafbd8ec",
-      "size": 3016,
+      "sha256": "766a9b12af588140c0b17bf877f59898f5566a56bd14556185973170767ee2e8",
+      "sourceSha256": "766a9b12af588140c0b17bf877f59898f5566a56bd14556185973170767ee2e8",
+      "size": 535,
+      "adaptation": null
+    },
+    {
+      "path": "packages/database/src/pg-sql-adapter.ts",
+      "sha256": "6bdaa2971937a3baabe36edb0cf365888e99f7acc59113fee1b877994936cb51",
+      "sourceSha256": "6bdaa2971937a3baabe36edb0cf365888e99f7acc59113fee1b877994936cb51",
+      "size": 2879,
       "adaptation": null
     },
     {
@@ -3829,9 +3857,9 @@
     },
     {
       "path": "packages/security/src/google-oidc.ts",
-      "sha256": "acab198b9fb76ee84442d68d5f32aa9f3f19b69924dca5f0d13ccc24ffd12714",
-      "sourceSha256": "acab198b9fb76ee84442d68d5f32aa9f3f19b69924dca5f0d13ccc24ffd12714",
-      "size": 7604,
+      "sha256": "224e4f8bd5e177e9efec71f36b52c40f1410bd6e2f58f1a5ce42c5c8a1d0e1a0",
+      "sourceSha256": "224e4f8bd5e177e9efec71f36b52c40f1410bd6e2f58f1a5ce42c5c8a1d0e1a0",
+      "size": 9809,
       "adaptation": null
     },
     {
@@ -4193,9 +4221,9 @@
     },
     {
       "path": "scripts/cloudflare-hosting.mjs",
-      "sha256": "f683008bc2dfa6e0ffd32d5534035cb06d42edf1a25ac407f716d878c0ee3848",
-      "sourceSha256": "f683008bc2dfa6e0ffd32d5534035cb06d42edf1a25ac407f716d878c0ee3848",
-      "size": 14000,
+      "sha256": "954204a29d604f35da7f101837eab2205c4dba3f6fb20ea06a2430b7318bf328",
+      "sourceSha256": "954204a29d604f35da7f101837eab2205c4dba3f6fb20ea06a2430b7318bf328",
+      "size": 14529,
       "adaptation": null
     },
     {
@@ -4280,6 +4308,13 @@
       "sha256": "fb375caa05c57a8f5ed6ddf0026c3ff41aa159c5aa3230873d9e781fd05f64ec",
       "sourceSha256": "fb375caa05c57a8f5ed6ddf0026c3ff41aa159c5aa3230873d9e781fd05f64ec",
       "size": 15259,
+      "adaptation": null
+    },
+    {
+      "path": "scripts/hosting-static-shell.mjs",
+      "sha256": "d34d4187a52cfa45e72428942d89b9d672e4daa759d15d15467331ad28a601ba",
+      "sourceSha256": "d34d4187a52cfa45e72428942d89b9d672e4daa759d15d15467331ad28a601ba",
+      "size": 2322,
       "adaptation": null
     },
     {
@@ -4935,9 +4970,9 @@
     },
     {
       "path": "tests/bootstrap/cloudflare-hosting.node-test.mjs",
-      "sha256": "e5806cd8e4ca6f33fa51a38a86c4b943439cca51a3ea6821565b86f1ecc86a74",
-      "sourceSha256": "e5806cd8e4ca6f33fa51a38a86c4b943439cca51a3ea6821565b86f1ecc86a74",
-      "size": 4488,
+      "sha256": "a5eeb9267943d8d8f6a3be0b041c9324e89fa4e7e263548b521e96041ccdaa73",
+      "sourceSha256": "a5eeb9267943d8d8f6a3be0b041c9324e89fa4e7e263548b521e96041ccdaa73",
+      "size": 5761,
       "adaptation": null
     },
     {
@@ -4966,6 +5001,13 @@
       "sha256": "31ddb1401bb0a116d90ebdec352c4e612664c0eec16b4b407c994a7944593992",
       "sourceSha256": "31ddb1401bb0a116d90ebdec352c4e612664c0eec16b4b407c994a7944593992",
       "size": 8464,
+      "adaptation": null
+    },
+    {
+      "path": "tests/bootstrap/hosting-static-shell.node-test.mjs",
+      "sha256": "dcab58e8cc6674951c7312e2577da9e0511f4aa1e68be1197179325144c09f5c",
+      "sourceSha256": "dcab58e8cc6674951c7312e2577da9e0511f4aa1e68be1197179325144c09f5c",
+      "size": 2752,
       "adaptation": null
     },
     {
@@ -5572,9 +5614,9 @@
     },
     {
       "path": "tests/integration/cpl-hosted-postgres.test.ts",
-      "sha256": "d4101970ede8851be4c8add973b1a46b02cdf5f6ca4f383e90cfca3b359630dc",
-      "sourceSha256": "d4101970ede8851be4c8add973b1a46b02cdf5f6ca4f383e90cfca3b359630dc",
-      "size": 39193,
+      "sha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
+      "sourceSha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
+      "size": 39221,
       "adaptation": null
     },
     {
@@ -5837,6 +5879,13 @@
       "adaptation": null
     },
     {
+      "path": "tests/unit/cloudflare-web-dispatch.test.ts",
+      "sha256": "12874e9af7aaeed9a98865852c8b195e3efb6589324dafa7233ba30fa270ae25",
+      "sourceSha256": "12874e9af7aaeed9a98865852c8b195e3efb6589324dafa7233ba30fa270ae25",
+      "size": 8956,
+      "adaptation": null
+    },
+    {
       "path": "tests/unit/config-services.test.ts",
       "sha256": "d10476eea209a21faa387a334650dd775e9047dda3a71ab3992722ae0ae10783",
       "sourceSha256": "d10476eea209a21faa387a334650dd775e9047dda3a71ab3992722ae0ae10783",
@@ -5873,16 +5922,16 @@
     },
     {
       "path": "tests/unit/cpl-google-oidc.test.ts",
-      "sha256": "e73d2c9ff0aff29275983c08150763dabaab1e0870d90135ae03028de54a33b7",
-      "sourceSha256": "e73d2c9ff0aff29275983c08150763dabaab1e0870d90135ae03028de54a33b7",
-      "size": 6753,
+      "sha256": "0394551a5ee81f565d83883cf6f82f1b8e7bb44d192e96f995ca4c7b13c2f403",
+      "sourceSha256": "0394551a5ee81f565d83883cf6f82f1b8e7bb44d192e96f995ca4c7b13c2f403",
+      "size": 8672,
       "adaptation": null
     },
     {
       "path": "tests/unit/cpl-hosted-auth-routes.test.ts",
-      "sha256": "7eb20272fd7454cc2a014e2a9f15ee0c5e078b57581ca25949e70c9c87d8819c",
-      "sourceSha256": "7eb20272fd7454cc2a014e2a9f15ee0c5e078b57581ca25949e70c9c87d8819c",
-      "size": 9604,
+      "sha256": "0c29d87651149accaee92f31276e7e120140243a00ad766e51f3e72187533607",
+      "sourceSha256": "0c29d87651149accaee92f31276e7e120140243a00ad766e51f3e72187533607",
+      "size": 11709,
       "adaptation": null
     },
     {
@@ -5894,9 +5943,9 @@
     },
     {
       "path": "tests/unit/cpl-hosted-runtime.test.ts",
-      "sha256": "6e0661d22c401e350b1b43fa2b726d2815a01a63191c37cde2b82a95965f13e1",
-      "sourceSha256": "6e0661d22c401e350b1b43fa2b726d2815a01a63191c37cde2b82a95965f13e1",
-      "size": 6252,
+      "sha256": "3c95edef749124cf5d3fc819d0b9ede72cb641e135d3690bb5f59dce31bfbfe9",
+      "sourceSha256": "3c95edef749124cf5d3fc819d0b9ede72cb641e135d3690bb5f59dce31bfbfe9",
+      "size": 7667,
       "adaptation": null
     },
     {
@@ -5970,10 +6019,17 @@
       "adaptation": null
     },
     {
+      "path": "tests/unit/pg-sql-adapter.test.ts",
+      "sha256": "d99c2f55e847d6a14e9e6a195f12bd6f2ae2b6de7c89dc7085cb3b291d7e1498",
+      "sourceSha256": "d99c2f55e847d6a14e9e6a195f12bd6f2ae2b6de7c89dc7085cb3b291d7e1498",
+      "size": 4524,
+      "adaptation": null
+    },
+    {
       "path": "tests/unit/pg-transaction-cleanup.test.ts",
-      "sha256": "4e7a59eec50a87b87cfb969c8dba204a05dbba3e287d5d6da78811da84f11914",
-      "sourceSha256": "4e7a59eec50a87b87cfb969c8dba204a05dbba3e287d5d6da78811da84f11914",
-      "size": 2257,
+      "sha256": "064c1dd0d46cfa5b572f6da93d40a5afed49250fa2e4e077fd4183979a2b2a08",
+      "sourceSha256": "064c1dd0d46cfa5b572f6da93d40a5afed49250fa2e4e077fd4183979a2b2a08",
+      "size": 2546,
       "adaptation": null
     },
     {

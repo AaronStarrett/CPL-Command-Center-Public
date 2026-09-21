@@ -177,4 +177,35 @@ describe("Hosted runtime fail-closed configuration", () => {
       ),
     ).toBe("only");
   });
+  it.each([
+    "",
+    "__Host-cpl-session=short",
+    `__Host-cpl-session=${"a".repeat(43)}; __Host-cpl-session=${"b".repeat(43)}`,
+  ])("rejects an impossible protected session before opening the database (%s)", async (cookie) => {
+    for (const [key, value] of Object.entries(configuration)) vi.stubEnv(key, value);
+    const operation = vi.fn();
+    await expect(
+      withHostedRuntime(operation, {
+        sessionRequest: new Request(configuration.APP_BASE_URL, { headers: { cookie } }),
+      }),
+    ).rejects.toThrow("CPL_AUTHENTICATION_REQUIRED");
+    expect(database.configurations).toHaveLength(0);
+    expect(database.query).not.toHaveBeenCalled();
+    expect(operation).not.toHaveBeenCalled();
+  });
+  it("a plausible cookie never bypasses the live database role verification", async () => {
+    for (const [key, value] of Object.entries(configuration)) vi.stubEnv(key, value);
+    database.rows = [{ ...safeRole, rolbypassrls: true }];
+    const operation = vi.fn();
+    await expect(
+      withHostedRuntime(operation, {
+        sessionRequest: new Request(configuration.APP_BASE_URL, {
+          headers: { cookie: `__Host-cpl-session=${"a".repeat(43)}` },
+        }),
+      }),
+    ).rejects.toThrow("CPL_HOSTED_DATABASE_ROLE_REFUSED");
+    expect(database.configurations).toHaveLength(1);
+    expect(database.closed).toHaveBeenCalledOnce();
+    expect(operation).not.toHaveBeenCalled();
+  });
 });

@@ -17,7 +17,6 @@ import {
   CPL_HOSTED_CSRF_COOKIE,
   type CplHostedSession,
 } from "@bea/security/hosted";
-import { cookies } from "next/headers";
 
 export interface CplHostedRuntime {
   readonly database: DatabaseAdapter;
@@ -94,8 +93,15 @@ export function hostedAuthConfigurationStatus(
  * client or mutable tenant state is cached across Cloudflare Worker requests. */
 export async function withHostedRuntime<T>(
   operation: (runtime: CplHostedRuntime) => Promise<T>,
+  options: { readonly sessionRequest?: Request } = {},
 ): Promise<T> {
   const configuration = readHostedAuthConfiguration();
+  // Reject an impossible session before opening TLS/SCRAM or querying the DB.
+  // A structurally valid cookie still receives every existing server-side check.
+  if (options.sessionRequest) {
+    const cookie = await hostedCookie(CPL_HOSTED_SESSION_COOKIE, options.sessionRequest);
+    if (!cookie || !/^[A-Za-z0-9_-]{43}$/u.test(cookie)) throw new CplHostedAuthenticationError();
+  }
   const database = new PgDatabaseAdapter({
     connectionString: configuration.databaseUrl,
     ssl: { rejectUnauthorized: true },
@@ -127,6 +133,7 @@ export async function withHostedRuntime<T>(
 
 export async function hostedCookie(name: string, request?: Request): Promise<string | undefined> {
   if (!request) {
+    const { cookies } = await import("next/headers");
     const matches = (await cookies()).getAll(name);
     return matches.length === 1 ? matches[0]?.value : undefined;
   }

@@ -10,6 +10,8 @@ The existing Next.js application is adapted with OpenNext; it is not replaced by
 - Downloadable artifacts are generated from authorized persisted proposal content for the current response. A successful download is not a durable artifact archive. Workers' `/tmp` storage is request-local and must never hold the only copy of customer data.
 - Build-time public assets use the adapter's read-only Static Assets cache. No ISR, tenant query cache, or Hyperdrive query cache is configured.
 
+The custom Worker entry reuses the existing released auth and CPL route functions after the shared deployment gate. It does not implement a second authentication or tenant layer. Ordinary workspace documents use the exact Next prerendered HTML, checked against its cache bytes during the build; React Server Component requests remain with OpenNext. Direct responses preserve security headers and separate cookies while removing Next's internal middleware cookie mirror. All other allowed requests retain the generated OpenNext handler.
+
 ## Local adapter verification
 
 Use the verified Node 24.19.0 executable and the frozen dependencies. Every command validates the checkout boundary and keeps tool configuration, temporary files, generated bundles, and evidence on the authorized SSD.
@@ -42,6 +44,8 @@ node scripts/cloudflare-hosting.mjs deploy jobs --commit <same-full-public-commi
 ## Free-plan constraints and acceptance
 
 Cloudflare's current [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) specify 100,000 requests per day, 10 ms CPU per HTTP or Cron invocation, 128 MB memory, a 64 MiB uncompressed bundle, and five Cron Triggers per free account. There is no compressed bundle-size cap in the current documentation. Network wait time does not count as CPU. The 10 ms budget can constrain authentication, rendering, and artifact generation; a successful local build cannot establish that those operations fit it.
+
+Actual invocations of published commit `30bb0ef` on September 21 exceeded the Free CPU budget: several anonymous API rejections used 26–60 ms and the observed Google callback used 563 ms. These requests had invocation outcome `ok`; occasional platform tolerance is not proof of sustained suitability. The custom dispatcher is a subsequent compatibility correction with focused and local workerd evidence. Its deployed CPU acceptance remains NOT RUN until the reviewed correction is published, deployed, and measured.
 
 Measure upload size using the Wrangler dry-run output, and inspect invocation CPU/outcomes after an authorized deployment. Do not enable a paid plan, attach billing, or raise paid CPU limits to hide a failure. Capture free-plan identity, public HTTPS URL, exact commit, real sign-in, PostgreSQL writes/readbacks across sessions, cross-tenant rejection, a real scheduled job, artifact handling, and rollback/recovery evidence before calling the hosted workflow verified.
 

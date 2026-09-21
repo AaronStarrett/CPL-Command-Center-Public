@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import {
   assertHostedOrigin,
   CplHostedAuthenticationError,
+  CPL_HOSTED_OIDC_DIAGNOSTIC_CODES,
   CPL_HOSTED_CSRF_COOKIE,
   CPL_HOSTED_OAUTH_COOKIE,
   CPL_HOSTED_SESSION_COOKIE,
@@ -135,6 +136,30 @@ export async function hostedGoogleCallback(request: Request): Promise<NextRespon
       return response;
     });
   } catch (error) {
+    // A callback failure must be diagnosable without logging its URL, state,
+    // authorization code, cookies, provider response, identity, or error stack.
+    const callbackCodes = new Set([
+      "CPL_AUTHENTICATION_REQUIRED",
+      "CPL_OAUTH_CALLBACK_REJECTED",
+      "CPL_OAUTH_STATE_REJECTED",
+      "CPL_IDENTITY_ASSERTION_REJECTED",
+      "CPL_OIDC_ASSERTION_REJECTED",
+      "CPL_HOSTED_AUTH_NOT_CONFIGURED",
+      "CPL_HOSTED_AUTH_UNAVAILABLE",
+    ]);
+    const known = error instanceof CplHostedAuthenticationError;
+    console.warn(
+      JSON.stringify({
+        event: "cpl_google_callback_rejected",
+        code: known && callbackCodes.has(error.code) ? error.code : "CPL_HOSTED_AUTH_UNAVAILABLE",
+        diagnosticCode:
+          known &&
+          error.diagnosticCode &&
+          CPL_HOSTED_OIDC_DIAGNOSTIC_CODES.includes(error.diagnosticCode)
+            ? error.diagnosticCode
+            : null,
+      }),
+    );
     const response = errorResponse(error);
     clearCookie(response, CPL_HOSTED_OAUTH_COOKIE);
     return response;

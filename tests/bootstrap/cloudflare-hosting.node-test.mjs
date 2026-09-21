@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   assertPublishedDeployment,
@@ -70,6 +72,32 @@ test("local hosting toolchain cannot inherit provider or database credentials", 
   assert.match(environment.WRANGLER_LOG_PATH.replaceAll("\\", "/"), /^D:\/Cyber Pirate Labs\//u);
 });
 
+test("hosting children use the invoking Node when inherited Path and PATH conflict", () => {
+  const preferredPath = "D:/Cyber Pirate Labs/synthetic-preferred-tools";
+  const environment = hostingEnvironment(
+    "D:/Cyber Pirate Labs/03_ENGINEERING/Repositories/CPL-Command-Center",
+    { ...process.env, Path: preferredPath, PATH: "D:/Cyber Pirate Labs/synthetic-other-tools" },
+  );
+  const expectedKey = process.platform === "win32" ? "Path" : "PATH";
+  assert.deepEqual(
+    Object.keys(environment).filter((key) => key.toLowerCase() === "path"),
+    [expectedKey],
+  );
+  assert.equal(
+    environment[expectedKey],
+    path.dirname(process.execPath) + path.delimiter + preferredPath,
+  );
+  const child = spawnSync("node", ["-p", "process.execPath"], {
+    env: environment,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  assert.equal(child.error, undefined);
+  assert.equal(child.status, 0);
+  assert.equal(child.stdout.trim(), process.execPath);
+});
+
 test("generated adapters and local Wrangler secrets cannot enter public export", () => {
   for (const file of [
     "apps/web/.open-next/worker.js",
@@ -98,6 +126,11 @@ test("hosting configurations require no paid storage and keep scheduler off HTTP
     JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8").replace(/,\s*(?=[}\]])/gu, ""));
   const web = configuration("../../apps/web/wrangler.jsonc");
   const jobs = configuration("../../apps/worker/wrangler.jsonc");
+  assert.equal(web.main, "cloudflare-worker.mjs");
+  assert.deepEqual(web.alias, {
+    "next/server": "./lib/cloudflare-next-response.mjs",
+    "server-only": "next/dist/compiled/server-only/empty.js",
+  });
   for (const configuration of [web, jobs]) {
     for (const binding of [
       "r2_buckets",

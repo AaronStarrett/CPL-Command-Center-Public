@@ -1,7 +1,11 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "cpl-command-center",
-  "main": ".open-next/worker.js",
+  "main": "cloudflare-worker.mjs",
+  "alias": {
+    "next/server": "./lib/cloudflare-next-response.mjs",
+    "server-only": "next/dist/compiled/server-only/empty.js",
+  },
   "compatibility_date": "2026-09-21",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,

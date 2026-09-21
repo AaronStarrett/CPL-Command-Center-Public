@@ -11,10 +11,27 @@ const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2
   cacheMaxAge: 3_600_000,
 });
 
+export const CPL_HOSTED_OIDC_DIAGNOSTIC_CODES = [
+  "TOKEN_REQUEST_FAILED",
+  "TOKEN_ENDPOINT_REJECTED",
+  "TOKEN_RESPONSE_UNAVAILABLE",
+  "TOKEN_RESPONSE_TOO_LARGE",
+  "TOKEN_RESPONSE_INVALID_JSON",
+  "TOKEN_RESPONSE_MISSING_ASSERTION",
+  "JWT_VERIFY_FAILED",
+  "JWT_EXPIRED",
+  "JWT_CLAIM_REJECTED",
+  "JWT_SIGNATURE_REJECTED",
+  "JWT_KEY_UNAVAILABLE",
+  "IDENTITY_CLAIMS_INVALID",
+  "AUTHENTICATION_TIME_INVALID",
+] as const;
+
 export class CplHostedAuthenticationError extends Error {
   constructor(
     readonly code = "CPL_AUTHENTICATION_REQUIRED",
     readonly status = 401,
+    readonly diagnosticCode?: (typeof CPL_HOSTED_OIDC_DIAGNOSTIC_CODES)[number],
   ) {
     super(code);
     this.name = "CplHostedAuthenticationError";
@@ -91,6 +108,7 @@ export class GoogleOidcAdapter {
     if (typeof input.code !== "string" || !input.code || input.code.length > 4_096)
       throw new CplHostedAuthenticationError();
     hostedTokenHash(input.verifier);
+    let diagnosticCode: CplHostedAuthenticationError["diagnosticCode"] = "TOKEN_REQUEST_FAILED";
     try {
       const response = await (this.dependencies.fetch ?? fetch)(GOOGLE_TOKEN_URL, {
         method: "POST",
@@ -106,7 +124,10 @@ export class GoogleOidcAdapter {
         redirect: "error",
         signal: AbortSignal.timeout(10_000),
       });
-      if (!response.ok || !response.body) throw new Error("Token exchange refused");
+      diagnosticCode = "TOKEN_ENDPOINT_REJECTED";
+      if (!response.ok) throw new Error("Token exchange refused");
+      diagnosticCode = "TOKEN_RESPONSE_UNAVAILABLE";
+      if (!response.body) throw new Error("Token response unavailable");
       const reader = response.body.getReader();
       let length = 0;
       const chunks: Uint8Array[] = [];
@@ -115,12 +136,15 @@ export class GoogleOidcAdapter {
         if (result.done) break;
         length += result.value.byteLength;
         if (length > 65_536) {
+          diagnosticCode = "TOKEN_RESPONSE_TOO_LARGE";
           await reader.cancel();
           throw new Error("Token response too large");
         }
         chunks.push(result.value);
       }
+      diagnosticCode = "TOKEN_RESPONSE_INVALID_JSON";
       const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      diagnosticCode = "TOKEN_RESPONSE_MISSING_ASSERTION";
       if (
         !body ||
         typeof body !== "object" ||
@@ -129,9 +153,13 @@ export class GoogleOidcAdapter {
       )
         throw new Error("Missing ID token");
       return await this.verifyIdToken(body.id_token, input.nonce);
-    } catch {
+    } catch (error) {
       // Never expose provider payloads, authorization codes, assertions or client secrets.
-      throw new CplHostedAuthenticationError("CPL_IDENTITY_ASSERTION_REJECTED");
+      throw new CplHostedAuthenticationError(
+        "CPL_IDENTITY_ASSERTION_REJECTED",
+        401,
+        error instanceof CplHostedAuthenticationError ? error.diagnosticCode : diagnosticCode,
+      );
     }
   }
 
@@ -139,6 +167,7 @@ export class GoogleOidcAdapter {
     hostedTokenHash(expectedNonce);
     if (typeof assertion !== "string" || assertion.length < 1 || assertion.length > 16_384)
       throw new CplHostedAuthenticationError();
+    let diagnosticCode: CplHostedAuthenticationError["diagnosticCode"] = "JWT_VERIFY_FAILED";
     try {
       const now = this.dependencies.now?.() ?? new Date();
       const { payload } = await jwtVerify(assertion, this.dependencies.keys ?? googleKeys, {
@@ -150,6 +179,7 @@ export class GoogleOidcAdapter {
         clockTolerance: 30,
         currentDate: now,
       });
+      diagnosticCode = "IDENTITY_CLAIMS_INVALID";
       if (
         payload.aud !== this.configuration.clientId ||
         (payload.azp !== undefined && payload.azp !== this.configuration.clientId) ||
@@ -170,6 +200,7 @@ export class GoogleOidcAdapter {
       )
         throw new Error("Invalid identity claims");
       const authenticatedAt = payload.auth_time ?? payload.iat!;
+      diagnosticCode = "AUTHENTICATION_TIME_INVALID";
       if (
         typeof authenticatedAt !== "number" ||
         !Number.isInteger(authenticatedAt) ||
@@ -189,8 +220,31 @@ export class GoogleOidcAdapter {
         authenticatedAt: new Date(authenticatedAt * 1_000).toISOString(),
         expiresAt: new Date(payload.exp! * 1_000).toISOString(),
       };
-    } catch {
-      throw new CplHostedAuthenticationError("CPL_IDENTITY_ASSERTION_REJECTED");
+    } catch (error) {
+      // Only fixed categories survive. Never retain a JWT, claims, URL, provider
+      // response, error message, cause, or stack in callback diagnostics.
+      if (
+        diagnosticCode === "JWT_VERIFY_FAILED" &&
+        error &&
+        typeof error === "object" &&
+        "code" in error
+      ) {
+        const categories: Readonly<Record<string, CplHostedAuthenticationError["diagnosticCode"]>> =
+          {
+            ERR_JWT_EXPIRED: "JWT_EXPIRED",
+            ERR_JWT_CLAIM_VALIDATION_FAILED: "JWT_CLAIM_REJECTED",
+            ERR_JWS_SIGNATURE_VERIFICATION_FAILED: "JWT_SIGNATURE_REJECTED",
+            ERR_JWKS_NO_MATCHING_KEY: "JWT_KEY_UNAVAILABLE",
+            ERR_JWKS_TIMEOUT: "JWT_KEY_UNAVAILABLE",
+          };
+        if (typeof error.code === "string" && Object.hasOwn(categories, error.code))
+          diagnosticCode = categories[error.code];
+      }
+      throw new CplHostedAuthenticationError(
+        "CPL_IDENTITY_ASSERTION_REJECTED",
+        401,
+        diagnosticCode,
+      );
     }
   }
 }
