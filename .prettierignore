@@ -1,4 +1,9 @@
 .next
+.open-next
+scripts/publication/licenses/*.LICENSE*
+.wrangler
+.dev.vars
+.dev.vars.*
 .env
 .env.*
 !.env.example

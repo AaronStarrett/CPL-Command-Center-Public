@@ -87,7 +87,7 @@ let authorization!: PersistentAuthorizationService;
 beforeAll(async () => {
   database = new PGliteDatabaseAdapter("memory://");
   const migrated = await migrateDatabase(database);
-  expect(migrated.applied.at(-1)).toBe("0025_cpl_tenant_foundation.sql");
+  expect(migrated.applied.at(-1)).toBe("0026_cpl_hosted_workflow.sql");
   await seedDatabase(database);
   pipeline = new InspectionReportPipeline({
     database,

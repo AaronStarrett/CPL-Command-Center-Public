@@ -47,16 +47,21 @@ export class PgDatabaseAdapter implements DatabaseAdapter {
 
   async transaction<T>(operation: (transaction: SqlExecutor) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
+    let connectionFailure: Error | undefined;
     try {
       await client.query("BEGIN");
       const result = await operation(new PgTransactionExecutor(client));
       await client.query("COMMIT");
       return result;
     } catch (error) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        connectionFailure = new Error("PostgreSQL rollback failed; discard connection.");
+      }
       throw error;
     } finally {
-      client.release();
+      client.release(connectionFailure);
     }
   }
 

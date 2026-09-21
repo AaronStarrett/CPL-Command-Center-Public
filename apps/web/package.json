@@ -20,7 +20,8 @@
     "@bea/security": "workspace:*",
     "@bea/ui": "workspace:*",
     "@electric-sql/pglite": "0.5.5",
-    "next": "16.3.1",
+    "next": "16.3.5",
+    "@simplewebauthn/browser": "14.0.0",
     "pdfjs-dist": "^6.2.108",
     "react": "19.2.8",
     "react-dom": "19.2.8"

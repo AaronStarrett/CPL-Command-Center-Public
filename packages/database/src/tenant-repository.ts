@@ -201,8 +201,8 @@ export class SqlCplTenantRepository {
       if (!identity || identity.status !== "active") fail();
       const identityId = String(identity.id);
       await executor.query(
-        `INSERT INTO cpl_sessions (id,identity_id,token_hash,authenticated_at,mfa_verified,expires_at)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
+        `INSERT INTO cpl_sessions (id,identity_id,token_hash,authenticated_at,mfa_verified,expires_at,mfa_verified_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
           randomUUID(),
           identityId,
@@ -210,6 +210,7 @@ export class SqlCplTenantRepository {
           new Date(authenticatedAt).toISOString(),
           claims.mfaVerified,
           expiresAt,
+          claims.mfaVerified ? new Date(authenticatedAt).toISOString() : null,
         ],
       );
       return { token, identityId, expiresAt };
@@ -217,7 +218,7 @@ export class SqlCplTenantRepository {
   }
   private async session(executor: SqlExecutor, token: string): Promise<Row> {
     const result = await executor.query<Row>(
-      `SELECT s.id AS session_id,s.identity_id,s.expires_at,s.revoked_at,s.mfa_verified,s.authenticated_at,
+      `SELECT s.id AS session_id,s.identity_id,s.expires_at,s.revoked_at,s.mfa_verified,s.authenticated_at,s.mfa_verified_at,
               i.issuer,i.subject,i.status AS identity_status
        FROM cpl_sessions s JOIN cpl_identities i ON i.id=s.identity_id WHERE s.token_hash=$1 FOR SHARE OF s,i`,
       [tokenHash(token)],
@@ -317,6 +318,16 @@ export class SqlCplTenantRepository {
       request.module,
     );
   }
+  /** Trusted server repository composition only. Authorization and tenant scope
+   * stay in the same transaction as the supplied database operation. */
+  async withTenantTransaction<T>(
+    request: CplTenantRequest,
+    permission: CplTenantPermission,
+    module: CplModuleKey,
+    operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
+  ): Promise<T> {
+    return this.authenticated(request, permission, operation, moduleKey(module));
+  }
   private async audit(
     executor: SqlExecutor,
     access: CplTenantAccess,
@@ -384,6 +395,47 @@ export class SqlCplTenantRepository {
       return organizations;
     });
   }
+  /** Initial production slice: an explicitly provisioned owner with recent real
+   * MFA creates an empty organization and enables only the two released modules. */
+  async createEnabledOrganization(
+    sessionToken: string,
+    input: { readonly slug: string; readonly displayName: string },
+  ): Promise<CplOrganization> {
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$/u.test(input.slug))
+      fail("CPL_INVALID_ORGANIZATION_SLUG");
+    return this.database.transaction(async (executor) => {
+      const session = await this.platformAdministrator(executor, sessionToken);
+      const identityId = String(session.identity_id);
+      const id = randomUUID();
+      await this.scope(executor, id, identityId);
+      const inserted = await executor.query<Row>(
+        "INSERT INTO cpl_organizations (id,slug,display_name) VALUES ($1,$2,$3) RETURNING *",
+        [id, input.slug, text(input.displayName)],
+      );
+      await executor.query(
+        "INSERT INTO cpl_memberships (organization_id,identity_id,role) VALUES ($1,$2,'owner')",
+        [id, identityId],
+      );
+      for (const key of CPL_MODULE_KEYS) {
+        const enabled = key === "intake-job-tracker" || key === "proposal-builder";
+        await executor.query(
+          "INSERT INTO cpl_module_entitlements (organization_id,module_key,enabled,usage_limit) VALUES ($1,$2,$3,$4)",
+          [id, key, enabled, enabled ? null : 0],
+        );
+      }
+      await this.audit(
+        executor,
+        { organizationId: id, identityId, role: "owner", membershipVersion: 1 },
+        "organization.hosted-created",
+        id,
+      );
+      await executor.query(
+        "INSERT INTO cpl_platform_audit_events (id,actor_identity_id,organization_id,action,resource_id) VALUES ($1,$2,$3,'hosted-modules.enabled',$4)",
+        [randomUUID(), identityId, id, id],
+      );
+      return organization(inserted.rows[0]!);
+    });
+  }
   async getOrganization(request: CplTenantRequest): Promise<CplOrganization> {
     return this.authenticated(request, "settings:read", async (executor) => {
       const result = await executor.query<Row>("SELECT * FROM cpl_organizations WHERE id=$1", [
@@ -411,7 +463,9 @@ export class SqlCplTenantRepository {
     const session = await this.session(executor, sessionToken);
     if (
       session.mfa_verified !== true ||
-      this.now().getTime() - instant(session.authenticated_at) > 15 * 60_000
+      session.mfa_verified_at == null ||
+      this.now().getTime() - instant(session.mfa_verified_at) > 15 * 60_000 ||
+      instant(session.mfa_verified_at) > this.now().getTime() + 30_000
     )
       fail("CPL_PLATFORM_MFA_REQUIRED");
     const result = await executor.query<Row>(

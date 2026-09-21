@@ -2,7 +2,9 @@
 
 CPL Command Center is a modular application for service-business workflows. This public source snapshot contains the actual Next.js application, Node worker, domain and database packages, migrations, tests, and dependency lockfile. It is a development checkpoint, not an activated production service.
 
-The production entry point is empty setup with operational access blocked. Hosted authentication, tenant migration of legacy records, real customer workflows, live connectors, and deployment acceptance remain unfinished. Legacy demonstration workflows require explicit isolated test mode (`NODE_ENV=test`). PGlite and deterministic providers are simulated evidence. AI/provider calls and external actions require separate configuration and authorization.
+The hosted slice implements Google identity, sessions and passkeys, organization membership, manually entered leads and proposal drafts, and a bounded PostgreSQL job. The existing Next.js app has an OpenNext Cloudflare adapter and a separate scheduler Worker. Live owner sign-in, device verification, deployed free-plan behavior, and the complete HTTPS workflow remain NOT RUN until recorded against the deployed public commit. See [deployment controls](docs/PUBLIC_DEPLOYMENT.md) and [test coverage](docs/HOSTED_TEST_COVERAGE.md).
+
+Hosted operation requires explicit configuration; an unconfigured local production launch retains the empty setup gate. Legacy tenant migration, live connectors, paid AI calls, and customer communications remain outside this slice. Legacy demonstration workflows require isolated test mode (`NODE_ENV=test`). PGlite and deterministic providers are simulated evidence.
 
 ## Local verification
 

@@ -5,3 +5,4 @@ export * from "./persistent-authorization.js";
 export * from "./rbac.js";
 export * from "./digital-workforce-authorization.js";
 export * from "./webhooks.js";
+export * from "./hosted-authentication-contracts.js";

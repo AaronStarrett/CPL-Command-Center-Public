@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 import { DirectoryReadCompatibilityPlugin } from "./lib/webpack-directory-read";
+import { HostedDependencyInputsPlugin } from "./lib/webpack-dependency-inputs";
+import path from "node:path";
 
 export function permissionsPolicyForEnvironment(browserMediaTestMode: boolean): string {
   return browserMediaTestMode
@@ -56,6 +58,11 @@ const nextConfig: NextConfig = {
     "@bea/ui",
   ],
   webpack(config, { isServer }) {
+    if (process.env.CPL_HOSTED_BUILD === "true") {
+      config.plugins.push(
+        new HostedDependencyInputsPlugin(path.join(__dirname, ".next", "cpl-dependency-inputs")),
+      );
+    }
     if (process.platform === "win32") {
       config.plugins.push(new DirectoryReadCompatibilityPlugin());
     }

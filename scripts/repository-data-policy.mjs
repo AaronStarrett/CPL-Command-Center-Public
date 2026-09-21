@@ -5,6 +5,8 @@ const prohibitedDirectoryNames = new Set([
   ".output",
   ".next",
   ".next-preview",
+  ".open-next",
+  ".wrangler",
   ".turbo",
   "backups",
   "build",
@@ -68,6 +70,7 @@ export function prohibitedRepositoryPathReason(value) {
   const base = segments.at(-1) ?? "";
 
   if (base.startsWith(".env") && base !== ".env.example") return "ENVIRONMENT_FILE";
+  if (base === ".dev.vars" || base.startsWith(".dev.vars.")) return "ENVIRONMENT_FILE";
   if (base.startsWith(".npmrc") && normalized !== ".npmrc" && base !== ".npmrc.example") {
     return "PACKAGE_CREDENTIAL_FILE";
   }

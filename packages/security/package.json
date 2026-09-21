@@ -6,6 +6,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./hosted": {
+      "types": "./src/hosted.ts",
+      "default": "./src/hosted.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
@@ -16,6 +20,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bea/domain": "workspace:*"
+    "@bea/domain": "workspace:*",
+    "jose": "6.2.12",
+    "@simplewebauthn/server": "14.0.2"
   }
 }

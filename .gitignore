@@ -3,6 +3,10 @@ node_modules/
 .turbo/
 .next/
 .next-preview/
+.open-next/
+.wrangler/
+.dev.vars
+.dev.vars.*
 apps/web/next-env.d.ts
 dist/
 coverage/

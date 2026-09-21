@@ -37,3 +37,6 @@ export * from "./guided-demo-repository.js";
 export * from "./guided-demo-seed.js";
 export * from "./meridian-report-workspace.js";
 export * from "./tenant-repository.js";
+export * from "./hosted-workflow.js";
+export * from "./hosted-database-role.js";
+export * from "./hosted-auth-store.js";

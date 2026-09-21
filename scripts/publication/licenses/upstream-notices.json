@@ -1,0 +1,26 @@
+{
+  "@edge-runtime/cookies@6.0.0": {
+    "filename": "edge-runtime-cookies-6.0.0.LICENSE.md",
+    "source": "https://raw.githubusercontent.com/vercel/edge-runtime/440c123a37284d6a852ce453af810ad484ecfc01/LICENSE.md",
+    "versionSource": "https://github.com/vercel/edge-runtime/blob/440c123a37284d6a852ce453af810ad484ecfc01/packages/cookies/package.json",
+    "tag": "@edge-runtime/cookies@6.0.0",
+    "commit": "440c123a37284d6a852ce453af810ad484ecfc01",
+    "sha256": "e4f76a7a19ef2989dd79339bd3abf8afcf1d6f065e5a10c76c19415ffd727eb3"
+  },
+  "wrangler@4.136.1": {
+    "filename": "wrangler-4.136.1.LICENSE.md",
+    "source": "https://raw.githubusercontent.com/cloudflare/workers-sdk/6e7712725698df46db9ec25ac738dd155ff8d39e/LICENSE-MIT",
+    "versionSource": "https://github.com/cloudflare/workers-sdk/blob/6e7712725698df46db9ec25ac738dd155ff8d39e/packages/wrangler/package.json",
+    "tag": "wrangler@4.136.1",
+    "commit": "6e7712725698df46db9ec25ac738dd155ff8d39e",
+    "sha256": "9bb3b077cc8628334bab25961223dd8207252c8a56aa054195be38f1c042aaf4"
+  },
+  "drizzle-orm@0.45.2": {
+    "filename": "drizzle-orm-0.45.2.LICENSE.md",
+    "source": "https://raw.githubusercontent.com/drizzle-team/drizzle-orm/273c78071d4841b497f5144734b38294df7ec64b/LICENSE",
+    "versionSource": "https://github.com/drizzle-team/drizzle-orm/blob/273c78071d4841b497f5144734b38294df7ec64b/drizzle-orm/package.json",
+    "tag": "0.45.2",
+    "commit": "273c78071d4841b497f5144734b38294df7ec64b",
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  }
+}

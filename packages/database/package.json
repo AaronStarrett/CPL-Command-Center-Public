@@ -6,6 +6,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./hosted": {
+      "types": "./src/hosted.ts",
+      "default": "./src/hosted.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"

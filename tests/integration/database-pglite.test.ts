@@ -48,6 +48,7 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0023_phase33a_commercial_integrity_and_override_cycles.sql",
       "0024_phase34a_guided_meridian_experience.sql",
       "0025_cpl_tenant_foundation.sql",
+      "0026_cpl_hosted_workflow.sql",
     ]);
     expect((await migrateDatabase(database)).alreadyApplied).toEqual([
       "0001_phase0_foundation.sql",
@@ -75,6 +76,7 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0023_phase33a_commercial_integrity_and_override_cycles.sql",
       "0024_phase34a_guided_meridian_experience.sql",
       "0025_cpl_tenant_foundation.sql",
+      "0026_cpl_hosted_workflow.sql",
     ]);
     await seedDatabase(database);
     await seedDatabase(database);

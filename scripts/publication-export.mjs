@@ -66,9 +66,11 @@ const publicDocs = new Set([
   "docs/PUBLIC_EXPORT.md",
   "docs/PUBLIC_DEPLOYMENT.md",
   "docs/CPL_TENANT_FOUNDATION.md",
+  "docs/HOSTING_COMPATIBILITY.md",
+  "docs/HOSTED_TEST_COVERAGE.md",
 ]);
 const textExtension = /\.(?:[cm]?[jt]sx?|json|jsonc|css|sql|ya?ml|toml|md|mdc|ps1|cmd|example)$/iu;
-const assetPaths = new Set(["apps/web/public/brand/cpl-logo.png"]);
+const assetPaths = new Set(["apps/web/public/brand/cpl-logo.png", "apps/web/public/_headers"]);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const jsonBytes = (value) => Buffer.from(JSON.stringify(value, null, 2) + "\n");
 

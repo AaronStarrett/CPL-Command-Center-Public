@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const EXPECTED_LAST_MIGRATION = "0025_cpl_tenant_foundation.sql";
+const EXPECTED_LAST_MIGRATION = "0026_cpl_hosted_workflow.sql";
 
 export function verifyMigrationLedgerFiles() {
   if (process.env.OPENAI_API_KEY) {

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cpl-command-center-jobs",
+  "main": "cloudflare-worker.mjs",
+  "compatibility_date": "2026-09-21",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": {
+    "crons": ["*/15 * * * *"],
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "vars": {
+    "CPL_PUBLIC_COMMIT": "UNPUBLISHED",
+  },
+}
