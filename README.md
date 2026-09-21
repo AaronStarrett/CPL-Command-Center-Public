@@ -10,7 +10,7 @@ Use the verified portable Node 24.19.0 and pnpm 11.19.0 toolchain. Production ac
 
 On the supported Windows SSD checkout, run `node scripts/cpl-install.mjs` for a frozen installation with workspace copies appropriate to exFAT. Then run `node scripts/repository-boundary.mjs`, `pnpm source:verify`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and the applicable unit/component/integration suites. `pnpm precommit:verify` is the installed local commit gate. Credentials are not required for isolated tests. Local production/setup starts with `Start-CPL.cmd`; `CPL-Doctor.cmd` and `Stop-CPL.cmd` inspect and stop that runtime.
 
-Hosted GitHub Actions are parked and repository Actions must remain disabled. Deployment, paid providers, billing, and live customer communications are not activated by publishing source.
+Hosted GitHub Actions are parked and repository Actions must remain disabled. Dependabot version updates and automatic rebasing are paused in every configured ecosystem because Dependabot jobs can bypass Actions disablement. Repository security-update automation must also remain disabled unless separately authorized. Deployment, paid providers, billing, and live customer communications are not activated by publishing source.
 
 ## Publication and rights
 

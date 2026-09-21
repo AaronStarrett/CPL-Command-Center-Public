@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import yaml from "js-yaml";
 
 import {
   HOSTED_ACTIONS_PARKED_MARKER,
@@ -21,6 +22,21 @@ import {
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 describe("hosted GitHub Actions parking and local pre-commit gate", () => {
+  it("pauses every Dependabot version-update and automatic rebase schedule", () => {
+    const configuration = yaml.load(
+      readFileSync(path.join(repositoryRoot, ".github/dependabot.yml"), "utf8"),
+    );
+    expect(configuration.version).toBe(2);
+    expect(configuration.updates.map((update) => update["package-ecosystem"])).toEqual([
+      "npm",
+      "github-actions",
+    ]);
+    for (const update of configuration.updates) {
+      expect(update["open-pull-requests-limit"]).toBe(0);
+      expect(update["rebase-strategy"]).toBe("disabled");
+    }
+  });
+
   it("keeps every workflow parked without automatic triggers", () => {
     expect(hostedActionsParkingFindings(repositoryRoot)).toEqual([]);
     for (const relativePath of HOSTED_WORKFLOW_PATHS) {

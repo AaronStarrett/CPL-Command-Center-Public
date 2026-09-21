@@ -2,7 +2,7 @@
 
 Status: ARCHITECTURE DEFINED. Cloud deployment and automatic deployment connection: NOT RUN.
 
-The development checkout exports reviewed application source to `AaronStarrett/CPL-Command-Center-Public`. The public repository has independent history. A release must use a specific public commit and its `PUBLIC_EXPORT_MANIFEST.json`; never deploy a private branch or merge private history into the public repository. GitHub Actions remain disabled.
+The development checkout exports reviewed application source to `AaronStarrett/CPL-Command-Center-Public`. The public repository has independent history. A release must use a specific public commit and its `PUBLIC_EXPORT_MANIFEST.json`; never deploy a private branch or merge private history into the public repository. GitHub Actions remain disabled. Dependabot version updates use zero open-PR limits and disabled rebasing in both configured ecosystems; repository security-update automation must remain disabled unless separately authorized. These are separate controls because [Dependabot jobs bypass Actions disablement](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-on-actions).
 
 The preserved application uses a Next.js Node web/API process, a separate Node worker, PostgreSQL, and provider interfaces. The repository's existing container and deployment contracts remain in `infra/`. They are configuration templates, not an implemented hosting adapter. No native Git deployment connection, host project, deployment credential, or installed hosting CLI has been verified for this release.
 

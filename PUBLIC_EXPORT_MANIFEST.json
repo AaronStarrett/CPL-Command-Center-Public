@@ -49,9 +49,9 @@
     },
     {
       "path": ".github/dependabot.yml",
-      "sha256": "0a726f6a8461bad18fda3d9b14cd173bce374ca36fd16ed35b2f51026a390445",
-      "sourceSha256": "0a726f6a8461bad18fda3d9b14cd173bce374ca36fd16ed35b2f51026a390445",
-      "size": 554,
+      "sha256": "0c47aea2c4a2dac733e4c81f5a32483d7a7be7495b91194041e07fc651be8503",
+      "sourceSha256": "0c47aea2c4a2dac733e4c81f5a32483d7a7be7495b91194041e07fc651be8503",
+      "size": 699,
       "adaptation": null
     },
     {
@@ -2135,9 +2135,9 @@
     },
     {
       "path": "docs/PUBLIC_DEPLOYMENT.md",
-      "sha256": "a13efc3875ca45369db41fecf30168e9c934a51e8b1301ef17f758811575d3e3",
-      "sourceSha256": "a13efc3875ca45369db41fecf30168e9c934a51e8b1301ef17f758811575d3e3",
-      "size": 2501,
+      "sha256": "74199dff17b011b7f0fce9b93a85ff5cbe2c457473ce80edde30261d123ad492",
+      "sourceSha256": "74199dff17b011b7f0fce9b93a85ff5cbe2c457473ce80edde30261d123ad492",
+      "size": 2871,
       "adaptation": null
     },
     {
@@ -3934,9 +3934,9 @@
     },
     {
       "path": "README.md",
-      "sha256": "60ec2328cf429bd8b46c62ac21774cc02f506408f842e9a0b3c549e99f021a70",
+      "sha256": "b5b7f607475cbb009e6efda7ac32beb1804741cedd87d967f0444d066c1909c9",
       "sourceSha256": "613e4e146ac5715ee05eadc1c67b208777658873ed93e3e9ef04805bb9209e1a",
-      "size": 2790,
+      "size": 3031,
       "adaptation": "reviewed-public-template"
     },
     {
@@ -4403,9 +4403,9 @@
     },
     {
       "path": "scripts/publication/README.md",
-      "sha256": "60ec2328cf429bd8b46c62ac21774cc02f506408f842e9a0b3c549e99f021a70",
-      "sourceSha256": "60ec2328cf429bd8b46c62ac21774cc02f506408f842e9a0b3c549e99f021a70",
-      "size": 2790,
+      "sha256": "b5b7f607475cbb009e6efda7ac32beb1804741cedd87d967f0444d066c1909c9",
+      "sourceSha256": "b5b7f607475cbb009e6efda7ac32beb1804741cedd87d967f0444d066c1909c9",
+      "size": 3031,
       "adaptation": null
     },
     {
@@ -5558,16 +5558,16 @@
     },
     {
       "path": "tests/unit/environment.test.ts",
-      "sha256": "bec124fe7fc52954bb891285df307277192a8aba590d01b1c9a9d6b0f3cce377",
-      "sourceSha256": "bec124fe7fc52954bb891285df307277192a8aba590d01b1c9a9d6b0f3cce377",
-      "size": 12210,
+      "sha256": "e756cdb6e75817e1d631f1f7210eae0db849aa899141a1490289a1941b57b54a",
+      "sourceSha256": "e756cdb6e75817e1d631f1f7210eae0db849aa899141a1490289a1941b57b54a",
+      "size": 12308,
       "adaptation": null
     },
     {
       "path": "tests/unit/hosted-actions-precommit.test.mjs",
-      "sha256": "42e1ede909dedabaed3cbdf52e1eec31998d40d1140ba2a25577b291b3568bfe",
-      "sourceSha256": "42e1ede909dedabaed3cbdf52e1eec31998d40d1140ba2a25577b291b3568bfe",
-      "size": 5173,
+      "sha256": "bc5ed1b9208497f56e63de0fac5450875d61b78a25c54ccaced106d28d84baca",
+      "sourceSha256": "bc5ed1b9208497f56e63de0fac5450875d61b78a25c54ccaced106d28d84baca",
+      "size": 5767,
       "adaptation": null
     },
     {

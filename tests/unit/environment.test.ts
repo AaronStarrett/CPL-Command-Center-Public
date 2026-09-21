@@ -7,6 +7,7 @@ import {
   parseEnvFile,
 } from "../../packages/config/src/index.js";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 describe("environment validation", () => {
   it("rejects synthetic development and retains an explicit test boundary", () => {
@@ -191,9 +192,8 @@ describe("environment validation", () => {
       APP_MODE: "demo",
       QUOTED: "safe value",
     });
-    expect(findRepositoryRoot(process.cwd())).toMatch(
-      /(?:CPL-Command-Center|BEA-Automation-Command-Center)$/u,
-    );
+    const expectedRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+    expect(findRepositoryRoot(resolve(expectedRoot, "packages/config/src"))).toBe(expectedRoot);
   });
 
   it("BEA_DISABLE_ENV_FILE bypasses every env-file exists/read operation", () => {
