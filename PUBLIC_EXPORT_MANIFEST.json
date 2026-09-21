@@ -2282,9 +2282,9 @@
     },
     {
       "path": "docs/FILE_INVENTORY.md",
-      "sha256": "84e641de0e470e76be9cf63945065fd8406df2b3cfc5912e98845e1cff05460f",
+      "sha256": "8e36efb27cd4871a981dfb68abe895b63f8cfc9510017a6722aa0c2efc064fd4",
       "sourceSha256": null,
-      "size": 116197,
+      "size": 116323,
       "adaptation": "generated-public-metadata"
     },
     {
@@ -4277,9 +4277,9 @@
     },
     {
       "path": "scripts/hosting-notices.mjs",
-      "sha256": "45c2dc16ed649b71f7ac7e217b06973459adfa59289950a6f173c57a9608156a",
-      "sourceSha256": "45c2dc16ed649b71f7ac7e217b06973459adfa59289950a6f173c57a9608156a",
-      "size": 14836,
+      "sha256": "fb375caa05c57a8f5ed6ddf0026c3ff41aa159c5aa3230873d9e781fd05f64ec",
+      "sourceSha256": "fb375caa05c57a8f5ed6ddf0026c3ff41aa159c5aa3230873d9e781fd05f64ec",
+      "size": 15259,
       "adaptation": null
     },
     {
@@ -4668,10 +4668,17 @@
       "adaptation": null
     },
     {
+      "path": "scripts/publication/licenses/string-hash-next-16.3.5.LICENSE.md",
+      "sha256": "62a7a3b8dba4cc818974ab2c00cb7fb7cb20afd7d3c73ed049d7f2eb5621a46e",
+      "sourceSha256": "62a7a3b8dba4cc818974ab2c00cb7fb7cb20afd7d3c73ed049d7f2eb5621a46e",
+      "size": 841,
+      "adaptation": null
+    },
+    {
       "path": "scripts/publication/licenses/upstream-notices.json",
-      "sha256": "9ccdc5472cd2f2c1e759d1a55a45f85510e4cbcb640cc0a17661c6e413705685",
-      "sourceSha256": "9ccdc5472cd2f2c1e759d1a55a45f85510e4cbcb640cc0a17661c6e413705685",
-      "size": 1563,
+      "sha256": "bb6105e52c610bdc95fc16d7a0a3e2a6564d89923520f3d6e9cf2fc313469263",
+      "sourceSha256": "bb6105e52c610bdc95fc16d7a0a3e2a6564d89923520f3d6e9cf2fc313469263",
+      "size": 2908,
       "adaptation": null
     },
     {
@@ -4704,9 +4711,9 @@
     },
     {
       "path": "scripts/publication/THIRD_PARTY_NOTICES.md",
-      "sha256": "709e48c0fed5fd1f7122b9ff0ff94ade6891555d627efa6c1719ebe2bb0cd5cf",
-      "sourceSha256": "709e48c0fed5fd1f7122b9ff0ff94ade6891555d627efa6c1719ebe2bb0cd5cf",
-      "size": 3420,
+      "sha256": "5da5b4f192b599c37791683bfd85dee6f6f96cc09e621ee05414cfbcbcc49800",
+      "sourceSha256": "5da5b4f192b599c37791683bfd85dee6f6f96cc09e621ee05414cfbcbcc49800",
+      "size": 3518,
       "adaptation": null
     },
     {
@@ -4956,9 +4963,9 @@
     },
     {
       "path": "tests/bootstrap/hosting-notices.node-test.mjs",
-      "sha256": "7b9c7db6c40731777deecd113058575ad86e4244e88c150676f9b1c90330670d",
-      "sourceSha256": "7b9c7db6c40731777deecd113058575ad86e4244e88c150676f9b1c90330670d",
-      "size": 7093,
+      "sha256": "31ddb1401bb0a116d90ebdec352c4e612664c0eec16b4b407c994a7944593992",
+      "sourceSha256": "31ddb1401bb0a116d90ebdec352c4e612664c0eec16b4b407c994a7944593992",
+      "size": 8464,
       "adaptation": null
     },
     {
@@ -6398,9 +6405,9 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "709e48c0fed5fd1f7122b9ff0ff94ade6891555d627efa6c1719ebe2bb0cd5cf",
+      "sha256": "5da5b4f192b599c37791683bfd85dee6f6f96cc09e621ee05414cfbcbcc49800",
       "sourceSha256": null,
-      "size": 3420,
+      "size": 3518,
       "adaptation": "generated-public-metadata"
     },
     {

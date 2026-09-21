@@ -54,6 +54,7 @@ export function collectHostingNotices({ repositoryRoot, resources, copiedRuntime
   const inspectedDirectories = new Set();
   const metadataCache = new Map();
   const emittedPackageResources = new Map();
+  const packageDirectories = new Map();
   const firstParty = new Set();
   for (const parent of ["apps", "packages"]) {
     const directory = path.join(root, parent);
@@ -113,6 +114,7 @@ export function collectHostingNotices({ repositoryRoot, resources, copiedRuntime
         notices: new Set(),
       });
     const record = packages.get(key);
+    if (!packageDirectories.has(key)) packageDirectories.set(key, directory);
     record.provenance.add(provenance);
     if (inspectedDirectories.has(directory)) return { key, record };
     inspectedDirectories.add(directory);
@@ -151,10 +153,7 @@ export function collectHostingNotices({ repositoryRoot, resources, copiedRuntime
     if (firstParty.has(metadata.name)) return;
     const installed = installedEquivalent(metadata, original);
     const base = addPackage(installed, metadata, undefined, provenance);
-    if (provenance === "emitted-module") {
-      if (!emittedPackageResources.has(base.key)) emittedPackageResources.set(base.key, new Set());
-      emittedPackageResources.get(base.key).add(file);
-    }
+    let owningPackage = base;
     const relative = path.relative(original, path.dirname(file));
     let current = installed;
     for (const part of relative.split(path.sep).filter(Boolean)) {
@@ -163,15 +162,20 @@ export function collectHostingNotices({ repositoryRoot, resources, copiedRuntime
       const embeddedMetadata = path.join(current, "package.json");
       if (existsSync(embeddedMetadata)) {
         const nested = metadataAt(embeddedMetadata);
-        if (nested.name) addPackage(current, nested, base.key, "embedded-runtime");
+        if (nested.name) owningPackage = addPackage(current, nested, base.key, "embedded-runtime");
       } else if (readdirSync(current).some((name) => noticeName.test(name))) {
-        addPackage(
+        owningPackage = addPackage(
           current,
           { name: `${metadata.name}/${path.relative(installed, current).replaceAll("\\", "/")}` },
           base.key,
           "embedded-runtime",
         );
       }
+    }
+    if (provenance === "emitted-module" && owningPackage) {
+      if (!emittedPackageResources.has(owningPackage.key))
+        emittedPackageResources.set(owningPackage.key, new Set());
+      emittedPackageResources.get(owningPackage.key).add(file);
     }
   }
   for (const resource of [...new Set(resources)].sort()) inspect(resource);
@@ -248,21 +252,31 @@ export function collectHostingNotices({ repositoryRoot, resources, copiedRuntime
       record.provenance.add("version-pinned-upstream-notice");
       continue;
     }
-    if (key === "client-only@0.0.1") {
+    const emptyMarker = {
+      "client-only@0.0.1": "index.js",
+      "server-only@0.0.1": "empty.js",
+    }[key];
+    if (emptyMarker) {
       const inputs = [...(emittedPackageResources.get(key) ?? [])];
       if (
         !inputs.length ||
-        inputs.some((file) => path.basename(file) !== "index.js" || readFileSync(file).length !== 0)
+        inputs.some(
+          (file) => path.basename(file) !== emptyMarker || readFileSync(file).length !== 0,
+        )
       )
         throw new Error(
-          "client-only emitted nonempty or unreviewed authored source; upstream notice review is required.",
+          `${record.name} emitted nonempty or unreviewed authored source; upstream notice review is required.`,
         );
-      const file = path.join(root, "node_modules", "client-only", "package.json");
+      const file = path.join(packageDirectories.get(key), "package.json");
       const bytes = readFileSync(checked(file));
       const metadata = JSON.parse(bytes);
-      if (metadata.version !== "0.0.1" || metadata.license !== "MIT")
-        throw new Error("client-only audited marker metadata changed.");
-      const id = `${key}/package.json (license declaration; emitted index.js is empty)`;
+      if (
+        metadata.name !== record.name ||
+        metadata.version !== "0.0.1" ||
+        metadata.license !== "MIT"
+      )
+        throw new Error(`${record.name} audited marker metadata changed.`);
+      const id = `${key}/package.json (license declaration; emitted ${emptyMarker} is empty)`;
       notices.set(id, { package: key, filename: "package.json", sha256: digest(bytes), bytes });
       record.notices.add(id);
       record.provenance.add(

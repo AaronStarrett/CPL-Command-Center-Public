@@ -684,6 +684,7 @@
 | `scripts/publication/THIRD_PARTY_NOTICES.md`                                                | Reviewed source publication |
 | `scripts/publication/licenses/drizzle-orm-0.45.2.LICENSE.md`                                | Reviewed source publication |
 | `scripts/publication/licenses/edge-runtime-cookies-6.0.0.LICENSE.md`                        | Reviewed source publication |
+| `scripts/publication/licenses/string-hash-next-16.3.5.LICENSE.md`                           | Reviewed source publication |
 | `scripts/publication/licenses/upstream-notices.json`                                        | Reviewed source publication |
 | `scripts/publication/licenses/wrangler-4.136.1.LICENSE.md`                                  | Reviewed source publication |
 | `scripts/publication/source-integrity.mjs`                                                  | Reviewed source publication |

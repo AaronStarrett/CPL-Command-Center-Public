@@ -22,5 +22,25 @@
     "tag": "0.45.2",
     "commit": "273c78071d4841b497f5144734b38294df7ec64b",
     "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  },
+  "string-hash@embedded in next@16.3.5": {
+    "filename": "string-hash-next-16.3.5.LICENSE.md",
+    "source": "https://raw.githubusercontent.com/darkskyapp/string-hash/5bf7547a91372c399f4052cc1094a93f73e10284/README.md",
+    "versionSource": "https://github.com/darkskyapp/string-hash/blob/5bf7547a91372c399f4052cc1094a93f73e10284/package.json",
+    "tag": null,
+    "commit": "5bf7547a91372c399f4052cc1094a93f73e10284",
+    "sha256": "62a7a3b8dba4cc818974ab2c00cb7fb7cb20afd7d3c73ed049d7f2eb5621a46e",
+    "versionResolution": "Published npm 1.1.3 gitHead; upstream v1.1.3 tag identifies package 1.1.4 and is not used.",
+    "registrySource": "https://registry.npmjs.org/string-hash/1.1.3",
+    "container": {
+      "name": "next",
+      "version": "16.3.5",
+      "tag": "v16.3.5",
+      "commit": "ca2c75eb7f8d9dd012a8bb83c06132149fe221f9",
+      "versionSource": "https://github.com/vercel/next.js/blob/ca2c75eb7f8d9dd012a8bb83c06132149fe221f9/packages/next/package.json",
+      "embeddedSource": "https://raw.githubusercontent.com/vercel/next.js/ca2c75eb7f8d9dd012a8bb83c06132149fe221f9/packages/next/src/compiled/string-hash/index.js",
+      "embeddedSha256": "704c6006f09b17e2e7e387a254f2cba84c25859418cd3a44b895f899281c556f",
+      "embeddedMetadataSha256": "afb2563fe191f4e7eecc9e6bf1131f07da3f855e6e51b2d517206ae737b343b0"
+    }
   }
 }

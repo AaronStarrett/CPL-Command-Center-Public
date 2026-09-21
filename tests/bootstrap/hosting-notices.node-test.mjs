@@ -134,6 +134,35 @@ test("version-pinned upstream notice supplements retain their reviewed bytes", (
   }
 });
 
+test("embedded server marker uses its own emitted resource and metadata rather than a root package", (t) => {
+  const { root, add } = fixture(t);
+  add("next", "Framework license\n", "16.3.5");
+  const embedded = path.join(root, "node_modules", "next", "dist", "compiled", "server-only");
+  mkdirSync(embedded, { recursive: true });
+  writeFileSync(
+    path.join(embedded, "package.json"),
+    JSON.stringify({ name: "server-only", version: "0.0.1", license: "MIT" }),
+  );
+  const empty = path.join(embedded, "empty.js"),
+    authored = path.join(embedded, "index.js");
+  writeFileSync(empty, "");
+  writeFileSync(authored, "throw new Error('authored boundary marker');");
+  const result = collectHostingNotices({ repositoryRoot: root, resources: [empty] });
+  const marker = result.manifest.packages.find((entry) => entry.name === "server-only");
+  assert.equal(marker.version, "0.0.1");
+  assert.match(marker.provenance.join(" "), /audited-empty-marker/u);
+  assert.ok(result.text.includes(Buffer.from('"name":"server-only"')));
+  assert.throws(
+    () => collectHostingNotices({ repositoryRoot: root, resources: [empty, authored] }),
+    /nonempty or unreviewed/u,
+  );
+  writeFileSync(empty, "export const unexpected = true;");
+  assert.throws(
+    () => collectHostingNotices({ repositoryRoot: root, resources: [empty] }),
+    /nonempty or unreviewed/u,
+  );
+});
+
 test("esbuild excludes removed inputs and webpack includes concatenated emitted resources", () => {
   assert.deepEqual(
     emittedEsbuildInputs(
