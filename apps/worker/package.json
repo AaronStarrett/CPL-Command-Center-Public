@@ -1,0 +1,27 @@
+{
+  "name": "@bea/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node ../../scripts/run-guarded.mjs tsx src/index.ts --serve",
+    "start": "node ../../scripts/run-guarded.mjs tsx src/index.ts --serve",
+    "once": "node ../../scripts/run-guarded.mjs tsx src/index.ts --once",
+    "workflow:foundation": "node ../../scripts/run-guarded.mjs tsx src/index.ts --once"
+  },
+  "dependencies": {
+    "@bea/artifacts": "workspace:*",
+    "@bea/automation": "workspace:*",
+    "@bea/config": "workspace:*",
+    "@bea/database": "workspace:*",
+    "@bea/integrations": "workspace:*",
+    "@bea/observability": "workspace:*",
+    "pg-boss": "10.4.2"
+  },
+  "devDependencies": {
+    "tsx": "4.23.12"
+  }
+}

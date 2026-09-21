@@ -1,0 +1,36 @@
+FROM node:24.19.0-bookworm-slim AS build
+
+RUN npm install --global pnpm@11.19.0
+WORKDIR /workspace
+COPY . .
+ENV APP_MODE=demo \
+    BEA_DISABLE_ENV_FILE=true \
+    BEA_REPOSITORY_ROOT=/workspace \
+    CI=true \
+    DATABASE_DRIVER=pglite \
+    DEMO_AUTH_ENABLED=true \
+    DEMO_DATABASE_PATH=memory:// \
+    NEXT_TELEMETRY_DISABLED=1 \
+    OPENAI_API_KEY=
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @bea/web build
+
+FROM node:24.19.0-bookworm-slim AS runtime
+RUN npm install --global pnpm@11.19.0
+WORKDIR /workspace
+COPY --chown=node:node --from=build /workspace /workspace
+ENV BEA_DISABLE_ENV_FILE=true \
+    BEA_REPOSITORY_ROOT=/workspace \
+    CI=true \
+    APP_MODE=demo \
+    DATABASE_DRIVER=pglite \
+    DEMO_AUTH_ENABLED=true \
+    DEMO_DATABASE_PATH=memory:// \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+  CMD node -e "const p=process.env.PORT||3000;fetch('http://127.0.0.1:'+p+'/sign-in').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+USER node
+CMD ["node", "scripts/next-no-env.mjs", "start", "apps/web", "--hostname", "0.0.0.0"]

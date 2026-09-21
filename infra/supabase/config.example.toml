@@ -1,0 +1,15 @@
+project_id = "replace-with-non-secret-project-reference"
+
+[db]
+major_version = 17
+
+[auth]
+enabled = false
+site_url = "https://replace-with-staging-host.example"
+additional_redirect_urls = ["https://replace-with-production-host.example/auth/callback"]
+
+[edge_runtime]
+enabled = false
+
+# Domain logic and the persistent worker remain in portable containers.
+# Supabase Auth is an optional pilot adapter and remains disabled until implemented.

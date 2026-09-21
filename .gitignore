@@ -1,0 +1,71 @@
+# Dependencies and builds
+node_modules/
+.turbo/
+.next/
+.next-preview/
+apps/web/next-env.d.ts
+dist/
+coverage/
+playwright-report/
+.playwright-mcp/
+test-results/
+/reports/
+*.tsbuildinfo
+
+# Runtime data and logs
+.data/
+*.log
+logs/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.npmrc
+!.npmrc.example
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.crt
+*.cer
+kubeconfig
+**/service-account*.json
+**/service_account*.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+**/credentials*.json
+**/cookies*.json
+**/storage-state*.json
+**/auth-state/
+
+# Databases, backups, and archives
+*.backup
+*.bak
+*.db
+*.dump
+*.sqlite
+*.sqlite3
+*.sql.gz
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Editors and operating system
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Package-manager noise
+.pnpm-debug.log*
+npm-debug.log*
+
+# Private owner instructions and pending handoff material
+/.local-handoff/

@@ -1,0 +1,242 @@
+.page {
+  min-height: 100dvh;
+  background: #f4f8f9;
+  color: #0b2f43;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 92px;
+  padding: 0 clamp(24px, 6vw, 100px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid #d8e4e8;
+  background: #fff;
+}
+.header strong {
+  display: block;
+  font-size: 18px;
+  letter-spacing: -0.4px;
+}
+.header div > span {
+  display: block;
+  font-size: 12px;
+  color: #4d6977;
+  margin-top: 4px;
+}
+.monogram {
+  display: grid;
+  place-items: center;
+  background: #0b2f43;
+  color: #64e2c7;
+  font-weight: 800;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+.badge {
+  margin-left: auto;
+  border: 1px solid #afc8c5;
+  background: #edf8f5;
+  color: #235e54;
+  padding: 8px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.main {
+  width: min(1180px, 100%);
+  margin: auto;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: clamp(32px, 7vw, 100px);
+  padding: 70px 32px 80px;
+  align-items: center;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2.2px;
+  color: #08786d;
+  margin: 0 0 22px;
+}
+.intro h1 {
+  font-size: clamp(38px, 4.4vw, 60px);
+  line-height: 1.08;
+  letter-spacing: -2.5px;
+  margin: 0 0 25px;
+  font-weight: 700;
+}
+.lead {
+  font-size: 17px;
+  line-height: 1.75;
+  color: #47616e;
+  max-width: 480px;
+}
+.notice {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 35px 0;
+  color: #3a5967;
+}
+.notice > span {
+  color: #08786d;
+  font-size: 30px;
+}
+.notice p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+.notice strong {
+  color: #143f50;
+}
+.refresh {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  gap: 24px;
+  padding: 14px 20px;
+  border-radius: 8px;
+  background: #0b5d56;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+}
+.refresh:hover {
+  background: #064740;
+}
+.refresh:focus-visible,
+.skip:focus-visible {
+  outline: 3px solid #0a8a7d;
+  outline-offset: 4px;
+}
+.panel {
+  background: white;
+  border: 1px solid #d9e5e9;
+  border-radius: 20px;
+  padding: 32px 36px;
+  box-shadow: 0 18px 55px #0b2f4309;
+}
+.panel > img {
+  display: block;
+  margin: -10px auto 10px;
+  width: 108px;
+  height: 108px;
+  object-fit: contain;
+}
+.panel h2 {
+  text-align: center;
+  font-size: 24px;
+  letter-spacing: -0.5px;
+  margin: 0 0 10px;
+}
+.panelLead {
+  text-align: center;
+  color: #536e7b;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 auto 25px;
+  max-width: 280px;
+}
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.steps li {
+  display: flex;
+  gap: 17px;
+  border-top: 1px solid #e5edef;
+  padding: 18px 0;
+}
+.steps li > span {
+  color: #147d72;
+  font-size: 12px;
+  font-weight: 700;
+  padding-top: 3px;
+}
+.steps h3 {
+  font-size: 14px;
+  margin: 0 0 7px;
+}
+.steps p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #536b78;
+  margin: 0;
+}
+.status {
+  background: #f1f6f7;
+  padding: 12px;
+  text-align: center;
+  border-radius: 7px;
+  font-size: 11px;
+  color: #4c6470;
+  margin: 4px 0 0;
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px clamp(24px, 6vw, 100px);
+  font-size: 11px;
+  color: #526d79;
+  border-top: 1px solid #d8e4e8;
+}
+.skip {
+  position: absolute;
+  left: 20px;
+  top: -60px;
+  background: white;
+  padding: 12px;
+  z-index: 10;
+}
+.skip:focus {
+  top: 12px;
+}
+@media (max-width: 760px) {
+  .header {
+    height: 80px;
+    padding: 0 22px;
+  }
+  .main {
+    grid-template-columns: 1fr;
+    padding: 45px 22px;
+    gap: 36px;
+  }
+  .intro h1 {
+    letter-spacing: -1.8px;
+  }
+  .lead {
+    font-size: 15px;
+  }
+  .panel {
+    padding: 28px 25px;
+  }
+  .badge {
+    font-size: 10px;
+    padding: 7px 10px;
+  }
+  .header strong {
+    font-size: 16px;
+  }
+  .footer {
+    flex-direction: column;
+    gap: 8px;
+    padding: 22px;
+  }
+  .notice {
+    margin: 25px 0;
+  }
+  .monogram {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+  }
+}

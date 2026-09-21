@@ -1,0 +1,43 @@
+{
+  "name": "@bea/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:start": "node ../../scripts/run-guarded.mjs tsx src/cli/database-service.ts start",
+    "db:stop": "node ../../scripts/run-guarded.mjs tsx src/cli/database-service.ts stop",
+    "migrate": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts migrate",
+    "verify:migrations": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts verify-migrations",
+    "system:seed": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts system-seed",
+    "verify:system-seed": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts verify-system-seed",
+    "verify:production": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts verify-production",
+    "seed": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts seed",
+    "demo:reset": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts demo-reset"
+  },
+  "dependencies": {
+    "@bea/automation": "workspace:*",
+    "@bea/ai": "workspace:*",
+    "@bea/config": "workspace:*",
+    "@bea/domain": "workspace:*",
+    "@bea/integrations": "workspace:*",
+    "@bea/observability": "workspace:*",
+    "@bea/security": "workspace:*",
+    "@electric-sql/pglite": "0.5.5",
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.6",
+    "tsx": "4.23.12"
+  }
+}

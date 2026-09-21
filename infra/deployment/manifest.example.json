@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "status": "architecture-only",
+  "runtime": {
+    "recommendedInitialTarget": "railway",
+    "portableArtifact": "OCI container images",
+    "adapterImplemented": false,
+    "deploymentEnabled": false,
+    "minimumWarmWebInstances": 1,
+    "minimumWarmWorkerInstances": 1
+  },
+  "services": [
+    {
+      "name": "bea-web",
+      "dockerfile": "infra/docker/Dockerfile.web",
+      "port": 3000,
+      "healthPath": "/sign-in",
+      "readinessPath": "/api/health",
+      "readinessStatus": "blocked-until-hosted-worker-endpoint-adapter",
+      "public": true,
+      "streaming": true
+    },
+    {
+      "name": "bea-worker",
+      "dockerfile": "infra/docker/Dockerfile.worker",
+      "port": 3001,
+      "healthPath": "/health",
+      "public": false,
+      "streaming": false
+    }
+  ],
+  "providers": {
+    "database": "supabase-postgres",
+    "auth": "current-server-auth",
+    "optionalAuthAdapter": "supabase-auth",
+    "objectStorage": "cloudflare-r2",
+    "vectorMemory": "supabase-pgvector",
+    "knowledgeSources": ["onedrive", "google-drive-optional"],
+    "queue": "postgres-pg-boss",
+    "secrets": "runtime-encrypted-secrets",
+    "email": "not-configured",
+    "monitoring": "structured-logs",
+    "backup": "manual-export-until-configured"
+  },
+  "environments": ["development", "staging", "production"],
+  "secrets": {
+    "source": "runtime-encrypted-secrets",
+    "gitHubContainsValues": false
+  }
+}

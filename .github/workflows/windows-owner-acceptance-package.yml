@@ -1,0 +1,230 @@
+# BEA_HOSTED_ACTIONS_PARKED
+# Hosted GitHub Actions are parked to avoid runner charges.
+# Local merge gate: pnpm verify:precommit (always-on Cursor rule + git hook).
+# Restore: remove this stub and uncomment the original body between the ORIGINAL markers.
+name: parked-windows-owner-acceptance-package
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parked:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+
+# BEA_HOSTED_ACTIONS_ORIGINAL_BEGIN
+# name: Windows Owner Acceptance Package
+#
+# on:
+#   workflow_dispatch:
+#   pull_request:
+#
+# permissions:
+#   contents: read
+#
+# concurrency:
+#   group: windows-owner-acceptance-${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
+#
+# env:
+#   APP_MODE: demo
+#   BEA_DISABLE_ENV_FILE: "true"
+#   BEA_REPOSITORY_ROOT: ${{ github.workspace }}
+#   CI: "true"
+#   DATABASE_DRIVER: pglite
+#   DEMO_AUTH_ENABLED: "true"
+#   DEMO_DATABASE_PATH: .data/phase21-owner-acceptance
+#   DEMO_RESET_CONFIRMATION: RESET_BEA_DEMO_DATA
+#   LOG_LEVEL: silent
+#   NEXT_TELEMETRY_DISABLED: "1"
+#   OPENAI_API_KEY: ""
+#   TURBO_TELEMETRY_DISABLED: "1"
+#   WORKER_DEMO_DATABASE_PATH: memory://
+#
+# jobs:
+#   credential-free-verify:
+#     name: Credential-free Phase 2.0-2.3 and secrets
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 90
+#     steps:
+#       - name: Check out exact branch commit
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           fetch-depth: 0
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Secret scanning
+#         run: |
+#           pnpm security:secrets
+#           pnpm security:history
+#
+#       - name: Phase 2.0 through 2.3 Playwright
+#         env:
+#           OPENAI_API_KEY: ""
+#         run: |
+#           pnpm build
+#           pnpm exec playwright install --with-deps chromium
+#           APP_BASE_URL=http://127.0.0.1:3000 WORKER_HEALTH_PORT=3001 pnpm test:e2e:phase2.0
+#           APP_BASE_URL=http://127.0.0.1:3010 WORKER_HEALTH_PORT=3011 pnpm test:e2e:phase2.1
+#           APP_BASE_URL=http://127.0.0.1:3020 WORKER_HEALTH_PORT=3021 pnpm test:e2e:phase2.2
+#           APP_BASE_URL=http://127.0.0.1:3030 WORKER_HEALTH_PORT=3031 pnpm test:e2e:phase2.3
+#
+#       - name: Upload Phase 2.1 Playwright artifacts on failure
+#         if: failure()
+#         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+#         with:
+#           name: phase21-playwright-report
+#           path: |
+#             playwright-report
+#             test-results
+#           if-no-files-found: ignore
+#           retention-days: 7
+#
+#       - name: Docker validation
+#         run: |
+#           docker build --file infra/docker/Dockerfile.web --tag bea-web:owner-acceptance .
+#           docker build --file infra/docker/Dockerfile.worker --tag bea-worker:owner-acceptance .
+#
+#       - name: Provider-neutral deployment validation
+#         run: pnpm deployment:validate
+#
+#   windows-package:
+#     name: Windows package, quality, and artifact
+#     runs-on: windows-latest
+#     timeout-minutes: 180
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out exact branch commit
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           fetch-depth: 0
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies with the lockfile
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Repository boundary and source integrity
+#         run: |
+#           pnpm guard
+#           pnpm source:verify
+#
+#       - name: Secret scanning
+#         run: pnpm security:secrets
+#
+#       - name: Format, lint, and typecheck
+#         run: |
+#           pnpm format:check
+#           pnpm lint
+#           pnpm typecheck
+#
+#       - name: Phase 1.3.5, 2.0, 2.1, 2.2, and 2.3 verification
+#         run: |
+#           pnpm test:unit:phase1.3.5
+#           pnpm verify:phase2.0
+#           pnpm verify:phase2.1
+#           pnpm verify:phase2.2
+#           pnpm verify:phase2.3
+#
+#       - name: Inventory, Windows-owned contracts, and integration
+#         run: |
+#           pnpm inventory:verify
+#           pnpm exec vitest run tests/unit/phase134-start-stop.test.mjs tests/unit/phase134-bootstrap-configure-wrappers.test.mjs --config vitest.unit.config.ts
+#           pnpm test:integration
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Fresh migrate and seed twice through current ledger
+#         run: |
+#           pnpm db:migrate
+#           pnpm db:seed
+#           pnpm db:seed
+#           node scripts/phase21/verify-credential-free-bootstrap.mjs
+#           pnpm exec vitest run tests/integration/phase134-system-seed.test.ts --config vitest.integration.config.ts
+#
+#       - name: Worker smoke
+#         run: pnpm smoke:worker
+#
+#       - name: Create Windows Owner Acceptance Package
+#         run: node scripts/phase21/build-windows-owner-package.mjs --output-dir "$env:GITHUB_WORKSPACE/package-out"
+#
+#       - name: Scan package for secrets and prohibited files
+#         run: node scripts/phase21/scan-windows-owner-package.mjs --staging "$env:GITHUB_WORKSPACE/package-out/staging"
+#
+#       - name: Verify zip checksum and extraction smoke
+#         shell: pwsh
+#         run: |
+#           $manifest = Get-Content -LiteralPath "$env:GITHUB_WORKSPACE/package-out/PACKAGE-MANIFEST.json" -Raw | ConvertFrom-Json
+#           $zip = Join-Path $env:GITHUB_WORKSPACE "package-out/BEA-Phase-2-3-Digital-Workforce-Evaluation.zip"
+#           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
+#           if ($hash -ne $manifest.sha256) { throw "Package SHA-256 mismatch." }
+#           $extract = Join-Path $env:GITHUB_WORKSPACE "package-out/extract-smoke"
+#           New-Item -ItemType Directory -Force -Path $extract | Out-Null
+#           python -c "import os, zipfile; zipfile.ZipFile(os.environ['BEA_ZIP']).extractall(os.environ['BEA_EXTRACT'])"
+#           if (-not (Test-Path -LiteralPath (Join-Path $extract "Start-BEA-Owner-Acceptance.cmd"))) { throw "Start launcher missing after extract." }
+#           if (-not (Test-Path -LiteralPath (Join-Path $extract "READ-ME-FIRST.txt"))) { throw "READ-ME-FIRST.txt missing after extract." }
+#           Write-Output "BEA_OWNER_PACKAGE_CHECKSUM=PASS $hash"
+#         env:
+#           BEA_ZIP: ${{ github.workspace }}/package-out/BEA-Phase-2-3-Digital-Workforce-Evaluation.zip
+#           BEA_EXTRACT: ${{ github.workspace }}/package-out/extract-smoke
+#
+#       - name: Upload private owner acceptance artifact
+#         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+#         with:
+#           name: BEA-Phase-2-3-Digital-Workforce-Evaluation
+#           path: |
+#             package-out/BEA-Phase-2-3-Digital-Workforce-Evaluation.zip
+#             package-out/PACKAGE-MANIFEST.json
+#             package-out/PACKAGE-CHECKSUMS.txt
+#             package-out/READ-ME-FIRST.txt
+#           if-no-files-found: error
+#           retention-days: 30
+#
+#       - name: Write workflow summary
+#         shell: pwsh
+#         run: |
+#           $manifest = Get-Content -LiteralPath "$env:GITHUB_WORKSPACE/package-out/PACKAGE-MANIFEST.json" -Raw | ConvertFrom-Json
+#           $zip = Get-Item -LiteralPath "$env:GITHUB_WORKSPACE/package-out/BEA-Phase-2-3-Digital-Workforce-Evaluation.zip"
+#           @"
+#           ## BEA Phase 2.3 Digital Workforce Evaluation Package
+#           - Artifact name: ``BEA-Phase-2-3-Digital-Workforce-Evaluation``
+#           - Zip file: ``BEA-Phase-2-3-Digital-Workforce-Evaluation.zip``
+#           - Branch: ``$($manifest.gitBranch)``
+#           - Commit SHA: ``$($manifest.gitCommitSha)``
+#           - Compressed size: $($manifest.compressedBytes) bytes
+#           - Extracted size: $($manifest.extractedBytes) bytes
+#           - SHA-256: ``$($manifest.sha256)``
+#           - Extraction path: ``C:\CPL-Dev\BEA-Automation-Command-Center``
+#           - First launcher: ``Start-BEA-Owner-Acceptance.cmd``
+#           - OpenAI key included: false
+#           - Live OpenAI call: false
+#           "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+# BEA_HOSTED_ACTIONS_ORIGINAL_END

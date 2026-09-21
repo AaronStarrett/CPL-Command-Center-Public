@@ -1,0 +1,15 @@
+.next
+.env
+.env.*
+!.env.example
+.data
+coverage
+dist
+node_modules
+playwright-report
+test-results
+pnpm-lock.yaml
+assets/brand/**/*.png
+docs/source/original/**/*.pdf
+.gitleaksignore
+.cursor/rules/*.mdc

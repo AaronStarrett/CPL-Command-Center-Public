@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "web": {
+    "method": "GET",
+    "path": "/sign-in",
+    "successStatus": 200,
+    "readinessTimeoutSeconds": 5,
+    "readinessPath": "/api/health",
+    "readinessStatus": "blocked-until-hosted-worker-endpoint-adapter"
+  },
+  "worker": {
+    "method": "GET",
+    "path": "/health",
+    "successStatus": 200,
+    "readinessTimeoutSeconds": 5
+  },
+  "failurePolicy": {
+    "consecutiveFailuresBeforeRestart": 3,
+    "gracefulTerminationSeconds": 30
+  }
+}

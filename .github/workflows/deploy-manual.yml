@@ -1,0 +1,76 @@
+# BEA_HOSTED_ACTIONS_PARKED
+# Hosted GitHub Actions are parked to avoid runner charges.
+# Local merge gate: pnpm verify:precommit (always-on Cursor rule + git hook).
+# Restore: remove this stub and uncomment the original body between the ORIGINAL markers.
+name: parked-provider-neutral-deployment-preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parked:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+
+# BEA_HOSTED_ACTIONS_ORIGINAL_BEGIN
+# name: Provider-neutral deployment preflight
+#
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: GitHub environment whose approval policy should apply
+#         required: true
+#         type: choice
+#         options:
+#           - staging
+#           - production
+#       web_image:
+#         description: Immutable web image reference ending in @sha256:<64 lowercase hex>
+#         required: true
+#         type: string
+#       worker_image:
+#         description: Immutable worker image reference ending in @sha256:<64 lowercase hex>
+#         required: true
+#         type: string
+#
+# permissions:
+#   contents: read
+#
+# jobs:
+#   preflight:
+#     name: Validate release inputs without provisioning
+#     runs-on: ubuntu-latest
+#     environment: ${{ inputs.environment }}
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#
+#       - name: Validate provider-neutral scaffolding
+#         run: node scripts/validate-deployment-scaffolding.mjs
+#
+#       - name: Validate immutable image references
+#         shell: bash
+#         env:
+#           WEB_IMAGE: ${{ inputs.web_image }}
+#           WORKER_IMAGE: ${{ inputs.worker_image }}
+#         run: |
+#           set -euo pipefail
+#           pattern='^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$'
+#           [[ "$WEB_IMAGE" =~ $pattern ]]
+#           [[ "$WORKER_IMAGE" =~ $pattern ]]
+#
+#       - name: Record validation-only disposition
+#         shell: bash
+#         run: |
+#           echo "DEPLOYMENT_ADAPTER_NOT_IMPLEMENTED"
+#           echo "Phase 1.3.5 validates inputs only and provisions no host."
+#           echo "DEPLOYMENT_EXECUTION=NOT_RUN" >> "$GITHUB_STEP_SUMMARY"
+# BEA_HOSTED_ACTIONS_ORIGINAL_END

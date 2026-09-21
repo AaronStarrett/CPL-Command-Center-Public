@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "provider": "cloudflare-r2",
+  "protocol": "s3-compatible",
+  "endpointTemplate": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+  "region": "auto",
+  "bucketNameTemplate": "bea-ENVIRONMENT-artifacts",
+  "tenantKeyTemplate": "tenants/TENANT_ID/",
+  "publicAccess": false,
+  "presignedUrlMaximumSeconds": 900,
+  "checksum": "sha256",
+  "lifecycle": [
+    {
+      "enabled": false,
+      "prefix": "temporary/",
+      "expireAfterDays": 7
+    },
+    {
+      "enabled": false,
+      "prefix": "cold-audit/",
+      "storageClass": "InfrequentAccess",
+      "minimumRetentionDays": 30
+    }
+  ],
+  "credentialsCommitted": false
+}

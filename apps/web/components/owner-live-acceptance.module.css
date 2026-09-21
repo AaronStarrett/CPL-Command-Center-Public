@@ -1,0 +1,78 @@
+.panel {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.intro,
+.step,
+.checklist,
+.guided {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.intro p,
+.step p,
+.guided p {
+  margin: 0;
+  color: var(--bea-ink-muted);
+}
+
+.steps {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.step {
+  padding: 1rem;
+  border: 1px solid var(--bea-border);
+  border-radius: var(--bea-radius-md);
+  background: color-mix(in srgb, var(--bea-surface) 94%, var(--bea-brand-navy));
+}
+
+.step h3 {
+  margin: 0.2rem 0 0;
+}
+
+.stepList {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prompt {
+  margin: 0;
+  padding: 0.75rem;
+  border-radius: var(--bea-radius-md);
+  background: color-mix(in srgb, var(--bea-surface) 88%, var(--bea-brand-green));
+  font: inherit;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border: 1px solid var(--bea-border);
+  border-radius: var(--bea-radius-md);
+}
+
+.item strong,
+.item span,
+.item small {
+  min-width: 0;
+}
+
+.item small {
+  color: var(--bea-ink-muted);
+}

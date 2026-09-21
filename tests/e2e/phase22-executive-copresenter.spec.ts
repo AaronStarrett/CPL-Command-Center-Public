@@ -1,0 +1,73 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+const ownerPersona = "Workspace Owner — Chief Executive Officer";
+
+async function activeApplicationShell(page: Page): Promise<Locator> {
+  const shells = page.locator(".bea-application-shell");
+  await expect
+    .poll(
+      async () =>
+        shells.evaluateAll((elements) => {
+          const states = elements.map((element) => {
+            const style = getComputedStyle(element);
+            const bounds = element.getBoundingClientRect();
+            const inactiveAncestor = element.closest('[hidden], [inert], [aria-hidden="true"]');
+            return {
+              inactive: Boolean(inactiveAncestor),
+              visible:
+                !inactiveAncestor &&
+                style.display !== "none" &&
+                style.visibility !== "hidden" &&
+                bounds.width > 0 &&
+                bounds.height > 0,
+            };
+          });
+          return {
+            active: states.filter((state) => state.visible).length,
+            unsafeInactive: states.filter((state) => !state.visible && !state.inactive).length,
+          };
+        }),
+      { message: "exactly one shell is interactive" },
+    )
+    .toEqual({ active: 1, unsafeInactive: 0 });
+  const activeShell = shells.filter({ visible: true });
+  await expect(activeShell).toHaveCount(1);
+  return activeShell;
+}
+
+async function copresenterWorkspace(page: Page): Promise<Locator> {
+  const shell = await activeApplicationShell(page);
+  const workspace = shell.getByRole("main").getByTestId("ai-command-workspace");
+  await expect(workspace).toHaveCount(1);
+  await expect(workspace).toBeVisible();
+  return workspace;
+}
+
+test.describe("@phase22-copresenter Executive PDF co-presenter", () => {
+  test("creates a BEA PDF in the right pane without leaving AI Command", async ({ page }) => {
+    await page.goto("/sign-in?returnTo=%2Fai-command");
+    await page
+      .getByRole("combobox", { name: "Demo persona" })
+      .selectOption({ label: ownerPersona });
+    await page.getByRole("button", { name: "Sign in to Command Center" }).click();
+    await expect(page).toHaveURL(/\/ai-command/u);
+    const workspace = await copresenterWorkspace(page);
+    await expect(workspace).toHaveAttribute("data-interaction-mode", "type");
+    await workspace
+      .getByLabel("Message BEA AI Command")
+      .fill("Create a BEA-branded executive briefing PDF from this research");
+    await workspace.getByRole("button", { name: "Send" }).click();
+    await expect(page).toHaveURL(/\/ai-command/u);
+    await expect(workspace.getByTestId("ai-workspace-panel")).toBeVisible();
+    const pdf = workspace.getByTestId("application-pdf-viewer");
+    await expect(pdf).toBeVisible({ timeout: 30_000 });
+    await expect(workspace.getByTestId("workspace-pdf-toolbar")).toBeVisible();
+    await workspace.getByTestId("ai-interaction-mode-voice").click();
+    await expect(workspace).toHaveAttribute("data-interaction-mode", "voice");
+    await expect(pdf).toBeVisible();
+    await workspace.getByTestId("ai-interaction-mode-type").click();
+    await expect(workspace).toHaveAttribute("data-interaction-mode", "type");
+    await expect(pdf).toBeVisible();
+    await expect(page).toHaveURL(/\/ai-command/u);
+  });
+});

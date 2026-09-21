@@ -1,0 +1,581 @@
+import {
+  COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  PROPOSAL_ACCEPTANCE_NON_EXECUTABLE,
+  PROPOSAL_EMAIL_DRY_RUN_DISCLOSURE,
+  SYNTHETIC_PROPOSAL_SENDER,
+  type ServiceCatalogPackage,
+} from "./commercial.js";
+
+const SYNTHETIC_TERMS_BASE = {
+  taxConfigured: false as const,
+  taxBps: 0 as const,
+  discountConfigured: false as const,
+  selfApprovalAllowed: false as const,
+  productionConfirmed: false as const,
+  disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+};
+
+const SYNTHETIC_APPROVAL = {
+  preparerRole: "sales" as const,
+  reviewerRole: "owner-admin" as const,
+  overrideApproverRole: "owner-admin" as const,
+  selfApprovalAllowed: false as const,
+  overrideThresholdMinor: null,
+  productionConfirmed: false as const,
+  disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+};
+
+const SYNTHETIC_DELIVERY = {
+  senderMailbox: SYNTHETIC_PROPOSAL_SENDER,
+  subjectTemplate: "SYNTHETIC PROPOSAL {reference} v{version} — NO MESSAGE SENT",
+  bodyTemplate:
+    "This is a synthetic proposal-delivery dry-run. No Outlook, Graph, SMTP, or e-signature call occurs.",
+  requiredScopes: ["Mail.Send.dry-run", "offline_access.placeholder"],
+  liveWrites: false as const,
+  disclosure: PROPOSAL_EMAIL_DRY_RUN_DISCLOSURE,
+};
+
+export const SYNTHETIC_ENVELOPE_CATALOG: ServiceCatalogPackage = {
+  catalogKey: "synthetic-envelope-advisory",
+  displayName: "Synthetic Envelope Advisory Lab Catalog",
+  serviceContextKey: "synthetic-envelope-advisory",
+  currency: "USD",
+  synthetic: true,
+  productionReady: false,
+  disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  items: [
+    {
+      serviceKey: "syn-env-fixed-advisory",
+      serviceCode: "SYN-ENV-001",
+      displayName: "Synthetic envelope advisory visit",
+      description: "Lab-only fixed-fee advisory visit. Not a BEA production service.",
+      scopeTemplate:
+        "Perform a synthetic envelope advisory walkthrough of the identified lab site and summarize visible conditions in application-owned notes.",
+      defaultDeliverables: ["Synthetic advisory summary", "Photograph index placeholder"],
+      defaultAssumptions: ["Access is available during the scheduled synthetic window."],
+      defaultExclusions: ["Destructive testing", "Repair design", "Permit applications"],
+      unitOfMeasure: "visit",
+      pricingModel: "fixed_fee",
+      defaultRateMinor: 11100,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 30_000,
+      eligibilityNotes: "Requires a ready synthetic lead with a site or project name.",
+      requiredLeadInformation: ["opportunity_name", "identified_client_or_contact"],
+      options: ["include-photo-index"],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 10,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-env-hourly-coordination",
+      serviceCode: "SYN-ENV-002",
+      displayName: "Synthetic hourly coordination",
+      description: "Lab-only hourly coordination. Rates are synthetic integers in cents.",
+      scopeTemplate:
+        "Provide synthetic coordination hours for envelope-advisory follow-up. Hours are entered as controlled quantities.",
+      defaultDeliverables: ["Hour log placeholder"],
+      defaultAssumptions: ["Coordination occurs in the application, not in a live mailbox."],
+      defaultExclusions: ["Live client meetings", "After-hours emergency response"],
+      unitOfMeasure: "hour",
+      pricingModel: "hourly",
+      defaultRateMinor: 8700,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 80_000,
+      eligibilityNotes: "Quantity must stay within the synthetic hour cap.",
+      requiredLeadInformation: ["opportunity_name"],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 20,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-env-travel-allowance",
+      serviceCode: "SYN-ENV-003",
+      displayName: "Synthetic travel allowance",
+      description: "Lab-only allowance line. Not a real travel policy.",
+      scopeTemplate: "Record a synthetic travel allowance. Actual receipts are not collected.",
+      defaultDeliverables: ["Allowance disclosure"],
+      defaultAssumptions: ["Allowance is an estimate, not an invoice."],
+      defaultExclusions: ["Airfare booking", "Personal mileage reimbursement processing"],
+      unitOfMeasure: "allowance",
+      pricingModel: "allowance",
+      defaultRateMinor: 3300,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 10_000,
+      eligibilityNotes: "Optional synthetic line.",
+      requiredLeadInformation: [],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 30,
+      synthetic: true,
+    },
+  ],
+  terms: {
+    ...SYNTHETIC_TERMS_BASE,
+    templateKey: "synthetic-envelope-terms",
+    validityDays: 14,
+    termsText:
+      "SYNTHETIC TERMS: This envelope-advisory laboratory proposal is not a BEA contract. Taxes, retainers, and production wording remain UNCONFIGURED.",
+    acceptanceLanguage:
+      "Signature lines below are visual only. No e-signature provider is connected.",
+  },
+  approval: SYNTHETIC_APPROVAL,
+  template: {
+    templateKey: "synthetic-proposal-letter",
+    displayName: "Synthetic compact commercial letter",
+    rendererAdapter: "bea.deterministic-synthetic-pdf.v1",
+    coverTitle: "Synthetic Envelope Advisory Proposal",
+    introText:
+      "This compact letter layout is a laboratory template. It is not Owner's actual proposal stationery.",
+    sectionOrder: ["cover", "client", "scope", "pricing", "terms", "acceptance", "disclosure"],
+    footerText: `${COMMERCIAL_SYNTHETIC_DISCLOSURE} Page numbering is synthetic.`,
+    synthetic: true,
+    disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  },
+  delivery: SYNTHETIC_DELIVERY,
+};
+
+export const SYNTHETIC_MOISTURE_CATALOG: ServiceCatalogPackage = {
+  catalogKey: "synthetic-moisture-investigation",
+  displayName: "Synthetic Moisture Investigation Lab Catalog",
+  serviceContextKey: "synthetic-moisture-investigation",
+  currency: "USD",
+  synthetic: true,
+  productionReady: false,
+  disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  items: [
+    {
+      serviceKey: "syn-moi-probe-unit",
+      serviceCode: "SYN-MOI-010",
+      displayName: "Synthetic moisture probe unit",
+      description: "Lab-only per-unit probe reading. Not a BEA field instrument fee.",
+      scopeTemplate:
+        "Record synthetic moisture-probe units against the laboratory floor plan. Units are controlled integers.",
+      defaultDeliverables: ["Unit count table", "Synthetic reading map placeholder"],
+      defaultAssumptions: ["The lab floor plan is available as text, not as a CAD file."],
+      defaultExclusions: ["Infrared camera rental", "Destructive openings"],
+      unitOfMeasure: "unit",
+      pricingModel: "unit_rate",
+      defaultRateMinor: 450,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 400_000,
+      eligibilityNotes: "Requires a site name or address on the lead.",
+      requiredLeadInformation: ["site_location"],
+      options: ["include-map-placeholder"],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 10,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-moi-daily-crew",
+      serviceCode: "SYN-MOI-011",
+      displayName: "Synthetic daily investigation crew",
+      description: "Lab-only daily crew rate. Not a production crew price.",
+      scopeTemplate: "Mobilize a synthetic investigation crew for a bounded number of days.",
+      defaultDeliverables: ["Daily crew log placeholder"],
+      defaultAssumptions: ["Crew size is not configurable in Phase 3.3A."],
+      defaultExclusions: ["Overtime", "Night work", "Confined-space entry"],
+      unitOfMeasure: "day",
+      pricingModel: "daily",
+      defaultRateMinor: 19900,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 50_000,
+      eligibilityNotes: "Daily quantity is a controlled integer.",
+      requiredLeadInformation: ["opportunity_name"],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 20,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-moi-equipment-reimbursable",
+      serviceCode: "SYN-MOI-012",
+      displayName: "Synthetic equipment reimbursable estimate",
+      description: "Lab-only reimbursable estimate. Not an invoiceable equipment bill.",
+      scopeTemplate: "Estimate synthetic equipment reimbursables. Receipts are not captured.",
+      defaultDeliverables: ["Reimbursable estimate line"],
+      defaultAssumptions: ["Estimate only. Accounting is DEFERRED."],
+      defaultExclusions: ["Purchase of equipment", "Accounting export"],
+      unitOfMeasure: "estimate",
+      pricingModel: "reimbursable",
+      defaultRateMinor: 7600,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 10_000,
+      eligibilityNotes: "Optional estimate line.",
+      requiredLeadInformation: [],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 30,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-moi-no-charge-brief",
+      serviceCode: "SYN-MOI-013",
+      displayName: "Synthetic no-charge briefing",
+      description: "Zero-charge synthetic briefing line used to prove no_charge math.",
+      scopeTemplate: "Include a synthetic no-charge briefing in the proposal document.",
+      defaultDeliverables: ["Briefing acknowledgement placeholder"],
+      defaultAssumptions: ["No charge does not imply a production courtesy policy."],
+      defaultExclusions: ["Written expert testimony"],
+      unitOfMeasure: "briefing",
+      pricingModel: "no_charge",
+      defaultRateMinor: 0,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 10_000,
+      eligibilityNotes: "Always zero.",
+      requiredLeadInformation: [],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 40,
+      synthetic: true,
+    },
+  ],
+  terms: {
+    ...SYNTHETIC_TERMS_BASE,
+    templateKey: "synthetic-moisture-terms",
+    validityDays: 21,
+    termsText:
+      "SYNTHETIC TERMS: This moisture-investigation laboratory proposal uses a sectioned template and different service families than the envelope catalog. Production exclusions remain UNCONFIGURED.",
+    acceptanceLanguage: `${PROPOSAL_ACCEPTANCE_NON_EXECUTABLE} Moisture-lab acceptance wording is synthetic.`,
+  },
+  approval: SYNTHETIC_APPROVAL,
+  template: {
+    templateKey: "synthetic-proposal-sectioned",
+    displayName: "Synthetic sectioned technical-commercial proposal",
+    rendererAdapter: "bea.deterministic-synthetic-pdf.v1",
+    coverTitle: "Synthetic Moisture Investigation Proposal",
+    introText:
+      "This sectioned layout is a second laboratory template. It must render materially different headings and service families from the envelope letter.",
+    sectionOrder: [
+      "cover",
+      "client",
+      "requested-services",
+      "scope",
+      "deliverables",
+      "schedule",
+      "pricing",
+      "allowances",
+      "assumptions",
+      "exclusions",
+      "terms",
+      "acceptance",
+      "revision-history",
+      "disclosure",
+    ],
+    footerText: `${COMMERCIAL_SYNTHETIC_DISCLOSURE} Sectioned footer · page numbering is synthetic.`,
+    synthetic: true,
+    disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  },
+  delivery: {
+    ...SYNTHETIC_DELIVERY,
+    subjectTemplate: "SYNTHETIC MOISTURE PROPOSAL {reference} v{version} — NO MESSAGE SENT",
+  },
+};
+
+export const SYNTHETIC_MERIDIAN_CATALOG: ServiceCatalogPackage = {
+  catalogKey: "synthetic-meridian-envelope",
+  displayName: "Synthetic Meridian Envelope Assessment Catalog",
+  serviceContextKey: "synthetic-meridian-envelope",
+  currency: "USD",
+  synthetic: true,
+  productionReady: false,
+  disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  items: [
+    {
+      serviceKey: "syn-meridian-envelope-diagnostic",
+      serviceCode: "SYN-MER-001",
+      displayName: "Envelope Diagnostic Assessment",
+      description:
+        "Lab-only building-envelope diagnostic assessment. ILLUSTRATIVE SYNTHETIC PRICING — NOT BEA PRICING.",
+      scopeTemplate:
+        "Perform a synthetic building-envelope assessment of Meridian Commerce Center, focusing on the east parapet, roof penetrations, and reported interior staining.",
+      defaultDeliverables: [
+        "Building envelope assessment report",
+        "Repair-priority summary",
+        "Photographic evidence index",
+      ],
+      defaultAssumptions: [
+        "Roof Access Authorization is provided before inspection.",
+        "Building plans and prior repair notes are available for review.",
+      ],
+      defaultExclusions: [
+        "Destructive testing",
+        "Repair design",
+        "Permit applications",
+        "Live client delivery",
+      ],
+      unitOfMeasure: "assessment",
+      pricingModel: "fixed_fee",
+      defaultRateMinor: 650_000,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 10_000,
+      eligibilityNotes: "Requires a ready synthetic Meridian lead.",
+      requiredLeadInformation: ["opportunity_name", "identified_client_or_contact"],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 10,
+      synthetic: true,
+    },
+    {
+      serviceKey: "syn-meridian-moisture-scan",
+      serviceCode: "SYN-MER-002",
+      displayName: "Moisture Scan Allowance",
+      description:
+        "Lab-only moisture-scan allowance. ILLUSTRATIVE SYNTHETIC PRICING — NOT BEA PRICING.",
+      scopeTemplate:
+        "Record a synthetic moisture-scan allowance for the east parapet transition and reported interior staining location.",
+      defaultDeliverables: ["Moisture-scan allowance disclosure"],
+      defaultAssumptions: ["Allowance is an estimate, not an invoice."],
+      defaultExclusions: ["Infrared camera rental", "Destructive openings"],
+      unitOfMeasure: "allowance",
+      pricingModel: "allowance",
+      defaultRateMinor: 135_000,
+      minimumQuantityScaled: 10_000,
+      maximumQuantityScaled: 10_000,
+      eligibilityNotes: "Optional synthetic allowance line for the Meridian demonstration.",
+      requiredLeadInformation: ["site_location"],
+      options: [],
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveTo: null,
+      active: true,
+      displayOrder: 20,
+      synthetic: true,
+    },
+  ],
+  terms: {
+    ...SYNTHETIC_TERMS_BASE,
+    templateKey: "synthetic-meridian-terms",
+    validityDays: 14,
+    termsText:
+      "SYNTHETIC TERMS: This Meridian Commerce Center proposal is a laboratory demonstration. ILLUSTRATIVE SYNTHETIC PRICING — NOT BEA PRICING. Taxes, retainers, and production wording remain UNCONFIGURED.",
+    acceptanceLanguage:
+      "Signature lines below are visual only. No e-signature provider is connected. GUIDED DEMONSTRATION STAGE — CLIENT ACCEPTANCE IS NOT YET CONNECTED.",
+  },
+  approval: SYNTHETIC_APPROVAL,
+  template: {
+    templateKey: "synthetic-proposal-letter",
+    displayName: "Synthetic compact commercial letter",
+    rendererAdapter: "bea.deterministic-synthetic-pdf.v1",
+    coverTitle: "Synthetic Meridian Envelope Assessment Proposal",
+    introText:
+      "This compact letter layout is a laboratory template for the Meridian Commerce Center demonstration. It is not Owner's actual proposal stationery.",
+    sectionOrder: ["cover", "client", "scope", "pricing", "terms", "acceptance", "disclosure"],
+    footerText: `${COMMERCIAL_SYNTHETIC_DISCLOSURE} ILLUSTRATIVE SYNTHETIC PRICING — NOT BEA PRICING.`,
+    synthetic: true,
+    disclosure: COMMERCIAL_SYNTHETIC_DISCLOSURE,
+  },
+  delivery: SYNTHETIC_DELIVERY,
+};
+
+export const PRODUCTION_SERVICE_CATALOG_PLACEHOLDER: ServiceCatalogPackage = {
+  catalogKey: "bea-production-service-catalog",
+  displayName: "BEA production service catalog (UNCONFIGURED)",
+  serviceContextKey: "bea-production-commercial",
+  currency: "USD",
+  synthetic: false,
+  productionReady: false,
+  disclosure: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  items: [],
+  terms: {
+    ...SYNTHETIC_TERMS_BASE,
+    templateKey: "production-terms-unconfigured",
+    validityDays: null,
+    termsText: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+    acceptanceLanguage: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  },
+  approval: {
+    ...SYNTHETIC_APPROVAL,
+    disclosure: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  },
+  template: {
+    templateKey: "synthetic-proposal-letter",
+    displayName: "Production proposal template (UNCONFIGURED)",
+    rendererAdapter: "bea.deterministic-synthetic-pdf.v1",
+    coverTitle: "Production proposal template UNCONFIGURED",
+    introText: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+    sectionOrder: ["disclosure"],
+    footerText: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+    synthetic: true,
+    disclosure: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  },
+  delivery: {
+    ...SYNTHETIC_DELIVERY,
+    disclosure: COMMERCIAL_PRODUCTION_UNCONFIGURED,
+  },
+};
+
+export const SYNTHETIC_CATALOG_PACKAGES: readonly ServiceCatalogPackage[] = [
+  SYNTHETIC_ENVELOPE_CATALOG,
+  SYNTHETIC_MOISTURE_CATALOG,
+];
+
+export function catalogPackageByKey(catalogKey: string): ServiceCatalogPackage | null {
+  if (catalogKey === PRODUCTION_SERVICE_CATALOG_PLACEHOLDER.catalogKey) {
+    return PRODUCTION_SERVICE_CATALOG_PLACEHOLDER;
+  }
+  if (catalogKey === SYNTHETIC_MERIDIAN_CATALOG.catalogKey) return SYNTHETIC_MERIDIAN_CATALOG;
+  return SYNTHETIC_CATALOG_PACKAGES.find((item) => item.catalogKey === catalogKey) ?? null;
+}
+
+export const COMMERCIAL_INTAKE_SECTIONS = [
+  ["I", "Service catalog"],
+  ["J", "Pricing"],
+  ["K", "Proposal structure"],
+  ["L", "Review, acceptance, and award"],
+] as const;
+
+export const COMMERCIAL_INTAKE_QUESTIONS: readonly {
+  readonly key: string;
+  readonly section: string;
+  readonly prompt: string;
+}[] = [
+  { key: "I.services", section: "I", prompt: "What services does BEA sell?" },
+  {
+    key: "I.service_codes",
+    section: "I",
+    prompt: "What service codes should appear on proposals?",
+  },
+  {
+    key: "I.standard_descriptions",
+    section: "I",
+    prompt: "What standard descriptions should the catalog carry?",
+  },
+  { key: "I.units", section: "I", prompt: "What units of measure apply to each service?" },
+  { key: "I.scope_variants", section: "I", prompt: "What scope variants exist for each service?" },
+  {
+    key: "I.deliverables",
+    section: "I",
+    prompt: "What deliverables are standard versus optional?",
+  },
+  { key: "I.exclusions", section: "I", prompt: "What exclusions must appear by default?" },
+  { key: "I.allowances", section: "I", prompt: "Which services use allowances?" },
+  { key: "I.reimbursables", section: "I", prompt: "Which services use reimbursable estimates?" },
+  {
+    key: "J.fixed_versus_unit",
+    section: "J",
+    prompt: "Which services are fixed fee versus unit, hourly, or daily?",
+  },
+  {
+    key: "J.rate_sources",
+    section: "J",
+    prompt: "Where do rates come from, and who maintains them?",
+  },
+  { key: "J.effective_dates", section: "J", prompt: "How are price effective dates managed?" },
+  { key: "J.minimum_fees", section: "J", prompt: "Are minimum fees required?" },
+  { key: "J.travel_charges", section: "J", prompt: "How are travel charges handled?" },
+  { key: "J.discounts", section: "J", prompt: "What discount authority exists, if any?" },
+  { key: "J.tax_handling", section: "J", prompt: "How should tax be handled on proposals?" },
+  { key: "J.override_authority", section: "J", prompt: "Who may request a pricing override?" },
+  {
+    key: "J.approval_thresholds",
+    section: "J",
+    prompt: "What approval thresholds apply to overrides or totals?",
+  },
+  {
+    key: "K.current_template",
+    section: "K",
+    prompt: "What is the current official proposal template?",
+  },
+  {
+    key: "K.required_wording",
+    section: "K",
+    prompt: "What wording is mandatory on every proposal?",
+  },
+  { key: "K.cover", section: "K", prompt: "What belongs on the cover or title block?" },
+  { key: "K.sections", section: "K", prompt: "What sections are required, and in what order?" },
+  { key: "K.terms", section: "K", prompt: "What commercial terms must appear?" },
+  { key: "K.expiration_period", section: "K", prompt: "How long does a proposal remain valid?" },
+  { key: "K.acceptance_language", section: "K", prompt: "What acceptance language is required?" },
+  { key: "K.attachments", section: "K", prompt: "What attachments are standard?" },
+  {
+    key: "K.naming_convention",
+    section: "K",
+    prompt: "What file-naming convention should be used?",
+  },
+  { key: "L.who_prepares", section: "L", prompt: "Who prepares proposals?" },
+  { key: "L.who_reviews_scope", section: "L", prompt: "Who reviews technical scope?" },
+  { key: "L.who_approves_price", section: "L", prompt: "Who approves price?" },
+  { key: "L.self_approve", section: "L", prompt: "Can preparers self-approve?" },
+  { key: "L.when_andrew_reviews", section: "L", prompt: "When does Owner review a proposal?" },
+  {
+    key: "L.who_authorizes_sending",
+    section: "L",
+    prompt: "Who may authorize sending a proposal?",
+  },
+  {
+    key: "L.what_proves_acceptance",
+    section: "L",
+    prompt: "What proves client acceptance?",
+  },
+  {
+    key: "L.acceptance_channel",
+    section: "L",
+    prompt: "Is acceptance by email, signature, purchase order, or verbal confirmation?",
+  },
+  { key: "L.who_records_acceptance", section: "L", prompt: "Who records client acceptance?" },
+  {
+    key: "L.required_evidence",
+    section: "L",
+    prompt: "What evidence is required to record acceptance?",
+  },
+  {
+    key: "L.project_number_rule",
+    section: "L",
+    prompt: "What project-number creation rule applies after award?",
+  },
+  {
+    key: "L.project_template_rule",
+    section: "L",
+    prompt: "What project template rule applies after award?",
+  },
+];
+
+export const COMMERCIAL_READINESS_GAPS: readonly {
+  readonly gapKey: string;
+  readonly area: string;
+  readonly description: string;
+}[] = [
+  {
+    gapKey: "bea-production-services",
+    area: "Service catalog",
+    description: "BEA production services, codes, and descriptions are UNCONFIGURED.",
+  },
+  {
+    gapKey: "bea-production-prices",
+    area: "Pricing",
+    description:
+      "BEA production rates, taxes, discounts, and override thresholds are UNCONFIGURED.",
+  },
+  {
+    gapKey: "bea-proposal-template",
+    area: "Proposal structure",
+    description: "Owner's actual proposal template and required wording are UNCONFIGURED.",
+  },
+  {
+    gapKey: "bea-commercial-approval",
+    area: "Review",
+    description: "Production commercial approval and self-approval rules are UNCONFIGURED.",
+  },
+  {
+    gapKey: "bea-acceptance-award",
+    area: "Acceptance and award",
+    description: "Client acceptance, e-signature, and award-to-project conversion remain DEFERRED.",
+  },
+];

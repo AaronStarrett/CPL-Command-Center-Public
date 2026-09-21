@@ -1,0 +1,21 @@
+---
+description: Always run local pre-commit test suites; hosted GitHub Actions are parked
+alwaysApply: true
+---
+
+# Pre-commit verification (always on)
+
+Hosted GitHub Actions are parked to avoid runner charges. Local suites are the merge gate.
+
+Before every `git commit`:
+
+1. Run `pnpm hooks:install` so `scripts/git-hooks/pre-commit` is the repository hook path.
+2. Run `pnpm precommit:verify`, or let the git hook run it.
+3. Do not use `--no-verify`, `GIT_SKIP_HOOKS`, or any skip flag.
+4. Do not treat skipped, filtered, or not-run suites as passed.
+5. Do not re-enable `pull_request`, `push`, `schedule`, or other automatic triggers on `.github/workflows/*`.
+6. Keep `OPENAI_API_KEY` empty. Do not make paid provider calls.
+
+`pnpm precommit:verify` runs repository boundary, source integrity, format, lint, typecheck, Phase 1.3.5 parking/deployment contracts, and `verify:phase2.0` through `verify:phase3.4a`, then secret scan and inventory. Windows also runs the Phase 1.3.5 local-storage audit. Playwright, hosted PostgreSQL, Docker image builds, full Windows-owned owner-tool unit files, and history secret scan are not part of the commit hook.
+
+If the hook is missing, install it and run the suite yourself before committing. A commit that bypasses the suite is incomplete.

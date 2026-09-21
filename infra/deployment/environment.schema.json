@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bea.invalid/schemas/deployment-environment-v1.json",
+  "title": "BEA provider-neutral hosted environment",
+  "x-bea-runtime-contract": {
+    "implementationStatus": "blocked-adapter-not-implemented",
+    "adapterImplemented": false,
+    "requiredRuntimeVariables": [
+      "APP_MODE",
+      "BEA_RUNTIME_MODE",
+      "BEA_DEPLOYMENT_PROFILE",
+      "BEA_AUTH_PROVIDER",
+      "DATABASE_DRIVER",
+      "DEMO_AUTH_ENABLED",
+      "WORKER_MODE",
+      "WORKER_QUEUE_ADAPTER"
+    ],
+    "providerToRuntimeMapping": {
+      "DATABASE_PROVIDER": "DATABASE_DRIVER",
+      "AUTH_PROVIDER": "BEA_AUTH_PROVIDER",
+      "QUEUE_PROVIDER": "WORKER_QUEUE_ADAPTER"
+    },
+    "note": "The current runtime has no hosted AuthProvider adapter. The manual workflow must remain validation-only until this mapping is implemented and tested."
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "APP_MODE",
+    "BEA_RUNTIME_MODE",
+    "BEA_DEPLOYMENT_PROFILE",
+    "BEA_AUTH_PROVIDER",
+    "DATABASE_DRIVER",
+    "DEMO_AUTH_ENABLED",
+    "WORKER_MODE",
+    "WORKER_QUEUE_ADAPTER",
+    "APP_BASE_URL",
+    "DATABASE_URL",
+    "DATABASE_PROVIDER",
+    "OBJECT_STORAGE_PROVIDER",
+    "VECTOR_MEMORY_PROVIDER",
+    "QUEUE_PROVIDER",
+    "SECRET_PROVIDER",
+    "APPLICATION_RUNTIME_TARGET",
+    "KNOWLEDGE_SOURCE_DEFAULT"
+  ],
+  "properties": {
+    "APP_BASE_URL": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public HTTPS origin; no path or credentials."
+    },
+    "APP_MODE": {
+      "const": "production",
+      "description": "Runtime-facing value required by packages/config; mapping is blocked until the hosted auth adapter exists."
+    },
+    "BEA_RUNTIME_MODE": {
+      "const": "production"
+    },
+    "BEA_DEPLOYMENT_PROFILE": {
+      "type": "string",
+      "description": "Runtime-facing profile. Current code supports enterprise only for a non-loopback host; a provider-neutral hosted-pilot profile is not implemented."
+    },
+    "BEA_AUTH_PROVIDER": {
+      "type": "string",
+      "description": "Runtime-facing auth adapter key. Supabase Auth is architecture-only and must not be configured until implemented."
+    },
+    "DATABASE_DRIVER": {
+      "const": "postgres"
+    },
+    "DEMO_AUTH_ENABLED": {
+      "const": "false"
+    },
+    "WORKER_MODE": {
+      "const": "serve"
+    },
+    "WORKER_QUEUE_ADAPTER": {
+      "const": "pg-boss"
+    },
+    "DATABASE_PROVIDER": {
+      "enum": ["supabase-postgres", "postgres"]
+    },
+    "DATABASE_URL": {
+      "type": "string",
+      "minLength": 1,
+      "writeOnly": true,
+      "description": "Injected server-side secret; never committed."
+    },
+    "AUTH_PROVIDER": {
+      "enum": ["current-server-auth", "supabase-auth", "external-oidc"],
+      "default": "current-server-auth",
+      "description": "Supabase Auth is an optional pilot adapter, not a domain dependency."
+    },
+    "OBJECT_STORAGE_PROVIDER": {
+      "enum": ["cloudflare-r2", "s3-compatible"]
+    },
+    "QUEUE_PROVIDER": {
+      "enum": ["postgres-pg-boss", "managed-queue"]
+    },
+    "VECTOR_MEMORY_PROVIDER": {
+      "enum": ["supabase-pgvector", "postgres-pgvector", "dedicated-search"]
+    },
+    "APPLICATION_RUNTIME_TARGET": {
+      "enum": ["railway", "render", "fly", "portable-container-host"]
+    },
+    "KNOWLEDGE_SOURCE_DEFAULT": {
+      "const": "onedrive"
+    },
+    "GOOGLE_DRIVE_CONNECTOR": {
+      "enum": ["disabled", "optional"],
+      "default": "optional"
+    },
+    "EMAIL_PROVIDER": {
+      "type": "string",
+      "default": "not-configured"
+    },
+    "MONITORING_PROVIDER": {
+      "type": "string",
+      "default": "structured-logs"
+    },
+    "BACKUP_PROVIDER": {
+      "type": "string",
+      "default": "manual-export-until-configured"
+    },
+    "SECRET_PROVIDER": {
+      "enum": ["runtime-encrypted-secrets", "managed-secret-provider"]
+    },
+    "DATABASE_SECRET_REFERENCE": {
+      "type": "string",
+      "description": "Opaque SecretProvider reference resolved only by the runtime."
+    },
+    "R2_SECRET_REFERENCE": {
+      "type": "string",
+      "description": "Opaque SecretProvider reference resolved only by the runtime."
+    },
+    "R2_ENDPOINT": {
+      "type": "string",
+      "format": "uri"
+    },
+    "R2_BUCKET": {
+      "type": "string",
+      "minLength": 1
+    },
+    "R2_ACCESS_KEY_ID": {
+      "type": "string",
+      "writeOnly": true
+    },
+    "R2_SECRET_ACCESS_KEY": {
+      "type": "string",
+      "writeOnly": true
+    },
+    "SESSION_SECRET": {
+      "type": "string",
+      "minLength": 32,
+      "writeOnly": true
+    },
+    "OPENAI_API_KEY": {
+      "type": "string",
+      "writeOnly": true
+    },
+    "PORT": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 3000
+    },
+    "WORKER_HEALTH_PORT": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 3001
+    }
+  }
+}

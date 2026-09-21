@@ -1,0 +1,1153 @@
+# BEA_HOSTED_ACTIONS_PARKED
+# Hosted GitHub Actions are parked to avoid runner charges.
+# Local merge gate: pnpm verify:precommit (always-on Cursor rule + git hook).
+# Restore: remove this stub and uncomment the original body between the ORIGINAL markers.
+name: parked-phase-1-3-5-repository-and-cloud-readiness
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parked:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+
+# BEA_HOSTED_ACTIONS_ORIGINAL_BEGIN
+# name: Phase 1.3.5 repository and cloud readiness
+#
+# on:
+#   pull_request:
+#   push:
+#     branches:
+#       - main
+#
+# permissions:
+#   contents: read
+#
+# concurrency:
+#   group: ci-${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
+#
+# env:
+#   APP_MODE: demo
+#   BEA_DISABLE_ENV_FILE: "true"
+#   BEA_REPOSITORY_ROOT: ${{ github.workspace }}
+#   CI: "true"
+#   DATABASE_DRIVER: pglite
+#   DEMO_AUTH_ENABLED: "true"
+#   DEMO_DATABASE_PATH: .data/phase1-3-5-ci
+#   DEMO_RESET_CONFIRMATION: RESET_BEA_DEMO_DATA
+#   LOG_LEVEL: silent
+#   NEXT_TELEMETRY_DISABLED: "1"
+#   OPENAI_API_KEY: ""
+#   TURBO_TELEMETRY_DISABLED: "1"
+#   WORKER_DEMO_DATABASE_PATH: memory://
+#
+# jobs:
+#   quality:
+#     name: Format, lint, typecheck, and tests
+#     runs-on: windows-latest
+#     timeout-minutes: 90
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out complete history
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           fetch-depth: 0
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Verify repository boundary and source assets
+#         run: |
+#           pnpm guard
+#           pnpm source:verify
+#
+#       - name: Check formatting
+#         run: pnpm format:check
+#
+#       - name: Lint
+#         run: pnpm lint
+#
+#       - name: Typecheck
+#         run: pnpm typecheck
+#
+#       - name: Run focused unit tests
+#         run: pnpm test:unit:phase1.3.5
+#
+#       - name: Run credential-free integration tests
+#         run: pnpm test:integration
+#
+#       - name: Reconcile tracked file inventory
+#         run: pnpm inventory:verify
+#
+#   phase20-quality:
+#     name: Phase 2.0 unit, component, and integration
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 2.0 focused verification
+#         run: pnpm verify:phase2.0
+#
+#   phase20-browser:
+#     name: Phase 2.0 Playwright leads
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused lead tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 2.0 Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#         run: pnpm test:e2e:phase2.0
+#
+#   phase21-quality:
+#     name: Phase 2.1 unit, component, and integration
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 2.1 focused verification
+#         run: pnpm verify:phase2.1
+#
+#   phase21-browser:
+#     name: Phase 2.1 Playwright co-presenter
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused co-presenter tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 2.1 Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase2.1
+#
+#   phase22:
+#     name: Phase 2.2 focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 2.2 focused verification
+#         run: pnpm verify:phase2.2
+#
+#   phase22-browser:
+#     name: Phase 2.2 Playwright executive co-presenter
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused executive PDF tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 2.2 Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase2.2
+#
+#   phase23:
+#     name: Phase 2.3 Digital Workforce focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 2.3 focused verification
+#         run: pnpm verify:phase2.3
+#
+#   phase23-browser:
+#     name: Phase 2.3 Playwright Digital Workforce
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused Digital Workforce tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 2.3 Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase2.3
+#
+#   phase30:
+#     name: Phase 3.0 inspection-to-report focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.0 focused verification
+#         run: pnpm verify:phase3.0
+#
+#   phase30-postgres:
+#     name: Phase 3.0 real PostgreSQL concurrency
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     services:
+#       postgres:
+#         image: postgres:16-alpine
+#         env:
+#           POSTGRES_USER: bea
+#           POSTGRES_PASSWORD: bea
+#           POSTGRES_DB: bea_phase30_test
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd "pg_isready -U bea -d bea_phase30_test"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#     env:
+#       APP_MODE: demo
+#       BEA_DISABLE_ENV_FILE: "true"
+#       BEA_PHASE30_REAL_POSTGRES_URL: postgres://bea:bea@localhost:5432/bea_phase30_test
+#       DATABASE_DRIVER: postgres
+#       LOG_LEVEL: silent
+#       OPENAI_API_KEY: ""
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.0 real PostgreSQL tests
+#         run: pnpm exec vitest run tests/integration/phase30-real-postgres.test.ts --config vitest.integration.config.ts
+#
+#   phase30-browser:
+#     name: Phase 3.0 Playwright inspection-to-report
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused operations tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 3.0 Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase3.0
+#
+#   phase31a:
+#     name: Phase 3.1A configuration framework focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.1A focused verification
+#         run: pnpm verify:phase3.1a
+#
+#   phase31a-postgres:
+#     name: Phase 3.1A real PostgreSQL configuration
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     services:
+#       postgres:
+#         image: postgres:16-alpine
+#         env:
+#           POSTGRES_USER: bea
+#           POSTGRES_PASSWORD: bea
+#           POSTGRES_DB: bea_phase31a_test
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd "pg_isready -U bea -d bea_phase31a_test"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#     env:
+#       APP_MODE: demo
+#       BEA_DISABLE_ENV_FILE: "true"
+#       BEA_PHASE31A_REAL_POSTGRES_URL: postgres://bea:bea@localhost:5432/bea_phase31a_test
+#       DATABASE_DRIVER: postgres
+#       LOG_LEVEL: silent
+#       OPENAI_API_KEY: ""
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.1A real PostgreSQL tests
+#         run: pnpm exec vitest run tests/integration/phase31a-real-postgres.test.ts --config vitest.integration.config.ts
+#
+#   phase31a-browser:
+#     name: Phase 3.1A Playwright configuration studio
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused configuration tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 3.1A Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase3.1a
+#
+#   phase32a:
+#     name: Phase 3.2A operational work control plane focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.2A focused verification
+#         run: pnpm verify:phase3.2a
+#
+#   phase32a-postgres:
+#     name: Phase 3.2A real PostgreSQL work control
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     services:
+#       postgres:
+#         image: postgres:16-alpine
+#         env:
+#           POSTGRES_USER: bea
+#           POSTGRES_PASSWORD: bea
+#           POSTGRES_DB: bea_phase32a_test
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd "pg_isready -U bea -d bea_phase32a_test"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#     env:
+#       APP_MODE: demo
+#       BEA_DISABLE_ENV_FILE: "true"
+#       BEA_PHASE32A_REAL_POSTGRES_URL: postgres://bea:bea@localhost:5432/bea_phase32a_test
+#       BEA_PHASE32A_REQUIRE_REAL_POSTGRES: "true"
+#       DATABASE_DRIVER: postgres
+#       LOG_LEVEL: silent
+#       OPENAI_API_KEY: ""
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Assert required Phase 3.2A PostgreSQL proofs exist and are not skipped
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           file=tests/integration/phase32a-real-postgres.test.ts
+#           grep -F 'fails a missing-cycle completion and still processes a later healthy event' "$file"
+#           grep -F 'dead-letters an exhausted missing-report event without invalid foreign keys' "$file"
+#           grep -F 'projects projection dead-letter work once under two workers' "$file"
+#           grep -F 'creates schedule dead-letter work without a job foreign key' "$file"
+#           grep -F 'runs concurrent reconciliation without aborting and creates one missing item' "$file"
+#           if grep -E 'it\.skip\(' "$file"; then
+#             echo "Skipped PostgreSQL proofs are not a pass."
+#             exit 1
+#           fi
+#           test -n "${BEA_PHASE32A_REAL_POSTGRES_URL}"
+#
+#       - name: Run Phase 3.2A real PostgreSQL tests
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           pnpm exec vitest run tests/integration/phase32a-real-postgres.test.ts \
+#             --config vitest.integration.config.ts \
+#             --reporter=verbose \
+#             --reporter=json \
+#             --outputFile=/tmp/phase32a-postgres-vitest.json
+#           node -e '
+#             const fs = require("node:fs");
+#             const report = JSON.parse(fs.readFileSync("/tmp/phase32a-postgres-vitest.json", "utf8"));
+#             const passed = Number(report.numPassedTests ?? 0);
+#             const failed = Number(report.numFailedTests ?? 0);
+#             const skipped = Number(report.numPendingTests ?? 0) + Number(report.numTodoTests ?? 0);
+#             if (failed > 0 || skipped > 0 || passed < 1) {
+#               console.error("Phase 3.2A PostgreSQL proofs must run and pass; skipped tests are not a pass.");
+#               console.error({ passed, failed, skipped });
+#               process.exit(1);
+#             }
+#             console.log("Phase 3.2A PostgreSQL proofs passed:", passed);
+#           '
+#
+#   phase32a-browser:
+#     name: Phase 3.2A Playwright operational work
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused work tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 3.2A Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase3.2a
+#
+#   phase33a:
+#     name: Phase 3.3A service catalog and proposal builder focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.3A focused verification
+#         run: pnpm verify:phase3.3a
+#
+#   phase33a-postgres:
+#     name: Phase 3.3A real PostgreSQL commercial concurrency
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     services:
+#       postgres:
+#         image: postgres:16-alpine
+#         env:
+#           POSTGRES_USER: bea
+#           POSTGRES_PASSWORD: bea
+#           POSTGRES_DB: bea_phase33a_test
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd "pg_isready -U bea -d bea_phase33a_test"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#     env:
+#       APP_MODE: demo
+#       BEA_DISABLE_ENV_FILE: "true"
+#       BEA_PHASE33A_REAL_POSTGRES_URL: postgres://bea:bea@localhost:5432/bea_phase33a_test
+#       BEA_PHASE33A_REQUIRE_REAL_POSTGRES: "true"
+#       DATABASE_DRIVER: postgres
+#       LOG_LEVEL: silent
+#       OPENAI_API_KEY: ""
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Assert required Phase 3.3A PostgreSQL proofs exist and are not skipped
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           file=tests/integration/phase33a-real-postgres.test.ts
+#           grep -F 'creates one effective initial proposal when two independent connections race the same ready lead' "$file"
+#           grep -F 'assigns one next version number when two independent connections race freeze' "$file"
+#           grep -F 'keeps concurrent approval of the same version idempotent or controlled' "$file"
+#           grep -F 'keeps one active catalog version per service context' "$file"
+#           grep -F 'replays commercial work events without duplicate queue rows' "$file"
+#           grep -F 'applies additive migration 0023 after 0022 without rewriting earlier history' "$file"
+#           grep -F 'assigns distinct catalog version numbers when independent connections clone concurrently' "$file"
+#           grep -F 'keeps one terminal override decision when independent connections race decideOverride' "$file"
+#           grep -F 'rejects Sales and keeps one Owner terminal override when independent connections race decideOverride' "$file"
+#           grep -F 'keeps two eligible Owner approve attempts to one terminal override result' "$file"
+#           grep -F 'creates one delivery manifest and one ready-for-delivery transition under concurrent callers' "$file"
+#           grep -F 'captures a coherent lead snapshot under concurrent lead edit and proposal creation' "$file"
+#           if grep -E 'it\.skip\(' "$file"; then
+#             echo "Skipped PostgreSQL proofs are not a pass."
+#             exit 1
+#           fi
+#           test -n "${BEA_PHASE33A_REAL_POSTGRES_URL}"
+#
+#       - name: Run Phase 3.3A real PostgreSQL tests
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           pnpm exec vitest run tests/integration/phase33a-real-postgres.test.ts \
+#             --config vitest.integration.config.ts \
+#             --reporter=verbose \
+#             --reporter=json \
+#             --outputFile=/tmp/phase33a-postgres-vitest.json
+#           node -e '
+#             const fs = require("node:fs");
+#             const report = JSON.parse(fs.readFileSync("/tmp/phase33a-postgres-vitest.json", "utf8"));
+#             const passed = Number(report.numPassedTests ?? 0);
+#             const failed = Number(report.numFailedTests ?? 0);
+#             const skipped = Number(report.numPendingTests ?? 0) + Number(report.numTodoTests ?? 0);
+#             if (failed > 0 || skipped > 0 || passed < 1) {
+#               console.error("Phase 3.3A PostgreSQL proofs must run and pass; skipped tests are not a pass.");
+#               console.error({ passed, failed, skipped });
+#               process.exit(1);
+#             }
+#             console.log("Phase 3.3A PostgreSQL proofs passed:", passed);
+#           '
+#
+#   phase33a-browser:
+#     name: Phase 3.3A Playwright proposals
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused proposal tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 3.3A Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase3.3a
+#
+#   phase34a:
+#     name: Phase 3.4A simplified workflow and Meridian demo focused verification
+#     runs-on: windows-latest
+#     timeout-minutes: 60
+#     env:
+#       GIT_CONFIG_COUNT: "1"
+#       GIT_CONFIG_KEY_0: core.autocrlf
+#       GIT_CONFIG_VALUE_0: "false"
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Run Phase 3.4A focused verification
+#         run: pnpm verify:phase3.4a
+#
+#   phase34a-postgres:
+#     name: Phase 3.4A real PostgreSQL guided-story verification
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     services:
+#       postgres:
+#         image: postgres:16-alpine
+#         env:
+#           POSTGRES_USER: bea
+#           POSTGRES_PASSWORD: bea
+#           POSTGRES_DB: bea_phase34a_test
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd "pg_isready -U bea -d bea_phase34a_test"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#     env:
+#       APP_MODE: demo
+#       BEA_DISABLE_ENV_FILE: "true"
+#       BEA_PHASE34A_REAL_POSTGRES_URL: postgres://bea:bea@localhost:5432/bea_phase34a_test
+#       BEA_PHASE34A_REQUIRE_REAL_POSTGRES: "true"
+#       DATABASE_DRIVER: postgres
+#       LOG_LEVEL: silent
+#       OPENAI_API_KEY: ""
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Assert required Phase 3.4A PostgreSQL proofs exist and are not skipped
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           file=tests/integration/phase34a-real-postgres.test.ts
+#           grep -F 'applies additive migration 0024 after 0023 without rewriting earlier history' "$file"
+#           grep -F 'creates one active run when two independent connections race start' "$file"
+#           grep -F 'keeps concurrent run-to-next-decision from skipping the roof gate' "$file"
+#           grep -F 'records one effective roof decision under duplicate idempotency keys' "$file"
+#           grep -F 'keeps event sequence unique and ordered after reset archives the prior run' "$file"
+#           if grep -E 'it\.skip\(' "$file"; then
+#             echo "Skipped PostgreSQL proofs are not a pass."
+#             exit 1
+#           fi
+#           test -n "${BEA_PHASE34A_REAL_POSTGRES_URL}"
+#
+#       - name: Run Phase 3.4A real PostgreSQL tests
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           pnpm exec vitest run tests/integration/phase34a-real-postgres.test.ts \
+#             --config vitest.integration.config.ts \
+#             --reporter=verbose \
+#             --reporter=json \
+#             --outputFile=/tmp/phase34a-postgres-vitest.json
+#           node -e '
+#             const fs = require("node:fs");
+#             const report = JSON.parse(fs.readFileSync("/tmp/phase34a-postgres-vitest.json", "utf8"));
+#             const passed = Number(report.numPassedTests ?? 0);
+#             const failed = Number(report.numFailedTests ?? 0);
+#             const skipped = Number(report.numPendingTests ?? 0) + Number(report.numTodoTests ?? 0);
+#             if (failed > 0 || skipped > 0 || passed < 1) {
+#               console.error("Phase 3.4A PostgreSQL proofs must run and pass; skipped tests are not a pass.");
+#               console.error({ passed, failed, skipped });
+#               process.exit(1);
+#             }
+#             console.log("Phase 3.4A PostgreSQL proofs passed:", passed);
+#           '
+#
+#   phase34a-browser:
+#     name: Phase 3.4A Playwright guided experience
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#           cache: pnpm
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Build web and worker
+#         run: pnpm build
+#
+#       - name: Install Chromium for focused Meridian tests
+#         run: pnpm exec playwright install --with-deps chromium
+#
+#       - name: Run tagged Phase 3.4A Playwright suite
+#         env:
+#           APP_BASE_URL: http://127.0.0.1:3000
+#           WORKER_HEALTH_PORT: "3001"
+#           OPENAI_API_KEY: ""
+#         run: pnpm test:e2e:phase3.4a
+#
+#   secrets:
+#     name: Current tree and complete history secret scan
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 20
+#     steps:
+#       - name: Check out complete history
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           fetch-depth: 0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#
+#       - name: Run BEA current-tree scanner
+#         run: node scripts/secret-scan.mjs
+#
+#       - name: Run BEA all-ref history scanner
+#         run: node scripts/history-secret-scan.mjs
+#
+#       - name: Install checksum-verified Gitleaks
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           version=8.30.1
+#           name="gitleaks_${version}_linux_x64.tar.gz"
+#           base="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+#           curl --fail --silent --show-error --location "${base}/${name}" --output "/tmp/${name}"
+#           curl --fail --silent --show-error --location "${base}/gitleaks_${version}_checksums.txt" --output /tmp/gitleaks-checksums.txt
+#           expected="$(grep "  ${name}$" /tmp/gitleaks-checksums.txt | awk '{print $1}')"
+#           actual="$(sha256sum "/tmp/${name}" | awk '{print $1}')"
+#           test -n "${expected}"
+#           test "${actual}" = "${expected}"
+#           tar -xzf "/tmp/${name}" -C /tmp gitleaks
+#           /tmp/gitleaks version
+#
+#       - name: Run maintained redacting history scanner
+#         run: /tmp/gitleaks git --no-banner --redact=100 --log-opts="--all" .
+#
+#   dependency-audit:
+#     name: Dependency audit
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 20
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#
+#       - name: Audit lockfile dependencies
+#         run: pnpm audit --audit-level high
+#
+#   containers:
+#     name: Docker build validation
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 45
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Build web image
+#         run: docker build --file infra/docker/Dockerfile.web --tag bea-web:ci .
+#
+#       - name: Build worker image
+#         run: docker build --file infra/docker/Dockerfile.worker --tag bea-worker:ci .
+#
+#       - name: Inspect runtime image safety contracts
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           test "$(docker image inspect --format '{{.Config.User}}' bea-web:ci)" = "node"
+#           test "$(docker image inspect --format '{{.Config.User}}' bea-worker:ci)" = "node"
+#           docker image inspect --format '{{json .Config.Healthcheck.Test}}' bea-web:ci | grep -F 'process.env.PORT||3000'
+#           docker image inspect --format '{{json .Config.Healthcheck.Test}}' bea-worker:ci | grep -F 'process.env.WORKER_HEALTH_PORT||3001'
+#
+#       - name: Run credential-free two-container liveness smoke
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           network=bea-phase135-ci
+#           docker network create "$network"
+#           cleanup() {
+#             docker rm --force bea-web-ci bea-worker-ci >/dev/null 2>&1 || true
+#             docker network rm "$network" >/dev/null 2>&1 || true
+#           }
+#           trap cleanup EXIT
+#           docker run --detach --name bea-worker-ci --network "$network" \
+#             --health-interval=2s --health-timeout=5s --health-start-period=10s --health-retries=30 \
+#             bea-worker:ci
+#           docker run --detach --name bea-web-ci --network "$network" \
+#             --health-interval=2s --health-timeout=5s --health-start-period=15s --health-retries=30 \
+#             bea-web:ci
+#           wait_healthy() {
+#             local container="$1"
+#             for _ in $(seq 1 60); do
+#               status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")"
+#               if [[ "$status" = healthy ]]; then return 0; fi
+#               if [[ "$(docker inspect --format '{{.State.Status}}' "$container")" = exited ]]; then break; fi
+#               sleep 2
+#             done
+#             docker logs "$container"
+#             return 1
+#           }
+#           wait_healthy bea-worker-ci
+#           wait_healthy bea-web-ci
+#
+#   deployment-contracts:
+#     name: Provider-neutral deployment contract validation
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 10
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#
+#       - name: Set up pnpm
+#         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+#         with:
+#           version: 11.19.0
+#
+#       - name: Set up Node
+#         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+#         with:
+#           node-version: 24.19.0
+#
+#       - name: Install dependencies
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: Validate portable environment and deployment examples
+#         run: node scripts/validate-deployment-scaffolding.mjs
+# BEA_HOSTED_ACTIONS_ORIGINAL_END

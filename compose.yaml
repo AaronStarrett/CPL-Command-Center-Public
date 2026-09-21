@@ -1,0 +1,21 @@
+name: bea-command-center
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bea_command_center
+      POSTGRES_USER: bea_local
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in an untracked environment file}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - bea_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bea_local -d bea_command_center"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  bea_postgres_data:

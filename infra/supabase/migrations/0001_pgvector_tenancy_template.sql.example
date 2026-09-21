@@ -1,0 +1,16 @@
+-- Architecture template only. Copy into the normal PostgreSQL migration stream
+-- only in a separately authorized implementation phase.
+BEGIN;
+
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+
+-- Every tenant-owned table must carry a non-null tenant_id foreign key.
+-- Application authorization must enforce tenant_id server-side. Tested RLS
+-- policies are defense in depth and must not replace application checks.
+
+-- Example future index shape:
+-- CREATE INDEX tenant_memory_embedding_hnsw
+--   ON tenant_memory USING hnsw (embedding vector_cosine_ops);
+
+COMMIT;

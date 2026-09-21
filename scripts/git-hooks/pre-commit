@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+export CI="${CI:-true}"
+export BEA_REPOSITORY_ROOT="${BEA_REPOSITORY_ROOT:-$repo_root}"
+export OPENAI_API_KEY=""
+export BEA_DISABLE_ENV_FILE="${BEA_DISABLE_ENV_FILE:-true}"
+export APP_MODE="${APP_MODE:-demo}"
+
+printf '%s\n' "BEA pre-commit: running local test suites. Hosted GitHub Actions are parked."
+exec node "$repo_root/scripts/pre-commit-verify.mjs"

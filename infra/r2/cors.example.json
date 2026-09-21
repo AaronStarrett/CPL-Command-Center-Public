@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "allowedOrigins": ["https://staging.example.invalid", "https://app.example.invalid"],
+      "allowedMethods": ["GET", "HEAD", "PUT"],
+      "allowedHeaders": ["content-type", "x-amz-checksum-sha256"],
+      "exposedHeaders": ["etag", "x-amz-checksum-sha256"],
+      "maxAgeSeconds": 3600
+    }
+  ],
+  "wildcardOriginsAllowed": false,
+  "credentialsCommitted": false
+}

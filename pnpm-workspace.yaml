@@ -1,0 +1,21 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Preserve the reviewed linkless layout on the external exFAT SSD. pnpm 11
+# otherwise attempts an implicit reinstall before scripts using symlinks.
+nodeLinker: hoisted
+enableGlobalVirtualStore: false
+packageImportMethod: copy
+injectWorkspacePackages: true
+dedupeInjectedDeps: false
+symlink: false
+preferSymlinkedExecutables: false
+hoistWorkspacePackages: false
+storeDir: .data/tooling/pnpm-store
+verifyDepsBeforeRun: error
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
