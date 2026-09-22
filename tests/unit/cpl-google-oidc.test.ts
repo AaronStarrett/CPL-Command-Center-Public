@@ -143,12 +143,42 @@ describe("Google OIDC cryptographic assertion boundary", () => {
     expect(result).not.toHaveProperty("access_token");
     expect(fetcher).toHaveBeenCalledWith(
       "https://oauth2.googleapis.com/token",
-      expect.objectContaining({ method: "POST", redirect: "error" }),
+      expect.objectContaining({ method: "POST", redirect: "manual" }),
     );
     const body = fetcher.mock.calls[0]![1]!.body as URLSearchParams;
     expect(body.get("code_verifier")).toBe("v".repeat(43));
     expect(body.get("redirect_uri")).toBe(`${origin}/api/auth/google/callback`);
   });
+
+  it.each([301, 302, 303, 307, 308])(
+    "rejects HTTP %i without following a token-endpoint redirect or reading its body",
+    async (status) => {
+      const response = new Response("synthetic-redirect-body", {
+        status,
+        headers: { Location: "https://attacker.example.test/collect" },
+      });
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response);
+      const keyResolver = vi.fn();
+      const exchange = new GoogleOidcAdapter(configuration, {
+        fetch: fetcher,
+        keys: keyResolver,
+      });
+
+      await expect(
+        exchange.exchangeCode({ code: "synthetic-code", verifier: "v".repeat(43), nonce }),
+      ).rejects.toMatchObject({
+        code: "CPL_IDENTITY_ASSERTION_REJECTED",
+        diagnosticCode: "TOKEN_ENDPOINT_REJECTED",
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledWith(
+        "https://oauth2.googleapis.com/token",
+        expect.objectContaining({ method: "POST", redirect: "manual" }),
+      );
+      expect(response.bodyUsed).toBe(false);
+      expect(keyResolver).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["provider error", "oversized body", "missing assertion"])("redacts %s", async (mode) => {
     const body =

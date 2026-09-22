@@ -121,7 +121,8 @@ export class GoogleOidcAdapter {
           grant_type: "authorization_code",
           code_verifier: input.verifier,
         }),
-        redirect: "error",
+        // Workerd supports manual redirects; the non-2xx check below rejects them.
+        redirect: "manual",
         signal: AbortSignal.timeout(10_000),
       });
       diagnosticCode = "TOKEN_ENDPOINT_REJECTED";

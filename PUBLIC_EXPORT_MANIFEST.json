@@ -3857,9 +3857,9 @@
     },
     {
       "path": "packages/security/src/google-oidc.ts",
-      "sha256": "224e4f8bd5e177e9efec71f36b52c40f1410bd6e2f58f1a5ce42c5c8a1d0e1a0",
-      "sourceSha256": "224e4f8bd5e177e9efec71f36b52c40f1410bd6e2f58f1a5ce42c5c8a1d0e1a0",
-      "size": 9809,
+      "sha256": "ec810620ef710797859b21b8770edb703beeebba75939dd18508bcd22eef00cf",
+      "sourceSha256": "ec810620ef710797859b21b8770edb703beeebba75939dd18508bcd22eef00cf",
+      "size": 9894,
       "adaptation": null
     },
     {
@@ -5922,9 +5922,9 @@
     },
     {
       "path": "tests/unit/cpl-google-oidc.test.ts",
-      "sha256": "0394551a5ee81f565d83883cf6f82f1b8e7bb44d192e96f995ca4c7b13c2f403",
-      "sourceSha256": "0394551a5ee81f565d83883cf6f82f1b8e7bb44d192e96f995ca4c7b13c2f403",
-      "size": 8672,
+      "sha256": "624f813fcffc3e2e3b4155d1e5462b0e519da366ea706a5f61cc75ffdae1c041",
+      "sourceSha256": "624f813fcffc3e2e3b4155d1e5462b0e519da366ea706a5f61cc75ffdae1c041",
+      "size": 9800,
       "adaptation": null
     },
     {
