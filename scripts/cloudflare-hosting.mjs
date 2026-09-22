@@ -22,6 +22,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicOrigin = "https://github.com/AaronStarrett/CPL-Command-Center-Public.git";
 const publicId = 1380072423;
 const pins = Object.freeze({ "@opennextjs/cloudflare": "1.20.6", wrangler: "4.136.1" });
+// This reviewed configuration uses prepared Static Assets and no skew mapping.
+// Any configuration edit needs deploy-step review before bypassing OpenNext's
+// cache population and deployment mapping, even when a new build succeeds.
+const prebuiltWebConfigSha256 = "7292b1ad8bde08b300ca8e3f1bbd60536af6f1a43f2aca8c6e029088519fbc9d";
 const git = (arguments_) =>
   execFileSync(
     "git",
@@ -155,6 +159,35 @@ export function staticCacheEnvironment(repositoryRoot, source = process.env) {
   };
 }
 
+export function deploymentArguments({ target, commit, build, openNextConfiguration }) {
+  if (!["web", "jobs"].includes(target) || !/^[a-f0-9]{40}$/u.test(commit ?? ""))
+    throw new Error("Deployment requires a known target and full public commit.");
+  if (target === "web") {
+    const configurationHash =
+      typeof openNextConfiguration === "string"
+        ? createHash("sha256").update(openNextConfiguration.replaceAll("\r\n", "\n")).digest("hex")
+        : null;
+    if (
+      build?.status !== "PASS" ||
+      build.staticCachePrepared !== true ||
+      build.adapter !== pins["@opennextjs/cloudflare"] ||
+      build.wrangler !== pins.wrangler ||
+      configurationHash !== prebuiltWebConfigSha256
+    )
+      throw new Error(
+        "Direct web deployment requires the reviewed static-cache configuration and completed cache preparation with pinned tools. Review cache/skew deployment steps before changing this configuration.",
+      );
+  }
+  // Explicit config keeps pinned Wrangler on its prebuilt upload path instead
+  // of delegating to OpenNext, which initializes an unnecessary local DB proxy.
+  return [
+    "deploy",
+    ...(target === "web" ? ["--config", "wrangler.jsonc"] : []),
+    "--var",
+    `CPL_PUBLIC_COMMIT:${commit}`,
+  ];
+}
+
 export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
   const options = parseHostingArguments(arguments_);
   const boundary = assertRepositoryBoundary({ cwd: root, target: root });
@@ -180,6 +213,7 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
   const evidenceFile = path.join(evidenceDirectory, `${options.target}-dry-run.json`);
   const nextBuildFile = path.join(evidenceDirectory, "web-build.json");
   const nextOutput = path.join(root, "apps", "web", ".open-next");
+  let webBuild = null;
   const bundleDirectory = path.join(evidenceDirectory, "bundles", options.target);
   for (const directory of [
     nextOutput,
@@ -191,15 +225,13 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
   ])
     assertUnredirectedPath(directory, root);
   if (options.target === "web" && options.action !== "build") {
-    const built = existsSync(nextBuildFile)
-      ? JSON.parse(readFileSync(nextBuildFile, "utf8"))
-      : null;
+    webBuild = existsSync(nextBuildFile) ? JSON.parse(readFileSync(nextBuildFile, "utf8")) : null;
     if (
-      !built ||
-      built.status !== "PASS" ||
-      built.sourceFingerprint !== fingerprint ||
-      built.commit !== head ||
-      built.artifactFingerprint !== artifactFingerprint(nextOutput)
+      !webBuild ||
+      webBuild.status !== "PASS" ||
+      webBuild.sourceFingerprint !== fingerprint ||
+      webBuild.commit !== head ||
+      webBuild.artifactFingerprint !== artifactFingerprint(nextOutput)
     )
       throw new Error(
         "The OpenNext build must match this source and its generated output before preview, dry-run, or deployment.",
@@ -249,13 +281,18 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
       path.join(evidenceDirectory, "local-state", options.target),
       ...(options.target === "jobs" ? ["--test-scheduled"] : []),
     ];
+  else if (options.action === "dry-run")
+    cliArguments = ["deploy", "--dry-run", "--outdir", bundleDirectory];
   else
-    cliArguments = [
-      "deploy",
-      ...(options.action === "dry-run"
-        ? ["--dry-run", "--outdir", bundleDirectory]
-        : ["--var", `CPL_PUBLIC_COMMIT:${head}`]),
-    ];
+    cliArguments = deploymentArguments({
+      target: options.target,
+      commit: head,
+      build: webBuild,
+      openNextConfiguration:
+        options.target === "web"
+          ? readFileSync(path.join(cwd, "open-next.config.ts"), "utf8")
+          : undefined,
+    });
   const startedAt = new Date().toISOString();
   let result = spawnSync(process.execPath, [cli, ...cliArguments], {
     cwd,

@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   assertPublishedDeployment,
   bundledEnvironmentFile,
+  deploymentArguments,
   hostingEnvironment,
   parseHostingArguments,
   staticCacheEnvironment,
@@ -52,6 +53,80 @@ test("hosting CLI accepts bounded actions and refuses unpinned deployment", () =
     ["preview", "unknown"],
   ])
     assert.throws(() => parseHostingArguments(arguments_));
+});
+
+const preparedWebDeployment = {
+  target: "web",
+  commit: published.commit,
+  build: {
+    status: "PASS",
+    staticCachePrepared: true,
+    adapter: "1.20.6",
+    wrangler: "4.136.1",
+  },
+  openNextConfiguration: readFileSync(
+    new URL("../../apps/web/open-next.config.ts", import.meta.url),
+    "utf8",
+  ),
+};
+
+test("prepared web deployment explicitly selects Wrangler's prebuilt config path", () => {
+  const expected = [
+    "deploy",
+    "--config",
+    "wrangler.jsonc",
+    "--var",
+    `CPL_PUBLIC_COMMIT:${published.commit}`,
+  ];
+  for (const newline of ["\n", "\r\n"])
+    assert.deepEqual(
+      deploymentArguments({
+        ...preparedWebDeployment,
+        openNextConfiguration: preparedWebDeployment.openNextConfiguration
+          .replaceAll("\r\n", "\n")
+          .replaceAll("\n", newline),
+      }),
+      expected,
+    );
+  assert.deepEqual(deploymentArguments({ target: "jobs", commit: published.commit }), [
+    "deploy",
+    "--var",
+    `CPL_PUBLIC_COMMIT:${published.commit}`,
+  ]);
+});
+
+test("direct web deployment refuses unprepared caches, changed tools, and cache/skew configuration drift", () => {
+  for (const build of [
+    undefined,
+    { ...preparedWebDeployment.build, status: "FAIL" },
+    { ...preparedWebDeployment.build, staticCachePrepared: undefined },
+    { ...preparedWebDeployment.build, staticCachePrepared: false },
+    { ...preparedWebDeployment.build, staticCachePrepared: "true" },
+    { ...preparedWebDeployment.build, adapter: "1.20.7" },
+    { ...preparedWebDeployment.build, wrangler: "4.136.2" },
+  ])
+    assert.throws(() => deploymentArguments({ ...preparedWebDeployment, build }));
+  for (const openNextConfiguration of [
+    undefined,
+    "",
+    preparedWebDeployment.openNextConfiguration.replace(
+      "incrementalCache: staticAssetsIncrementalCache",
+      'incrementalCache: "r2"',
+    ),
+    preparedWebDeployment.openNextConfiguration +
+      "\n// A changed cache or skew configuration requires review.\n",
+    preparedWebDeployment.openNextConfiguration.replace(
+      "enableCacheInterception: true,",
+      'enableCacheInterception: true, tagCache: "d1",',
+    ),
+    preparedWebDeployment.openNextConfiguration.replace(
+      "export default defineCloudflareConfig({",
+      "const config = defineCloudflareConfig({",
+    ) + "\nconfig.cloudflare.skewProtection = { enabled: true };\nexport default config;\n",
+  ])
+    assert.throws(() => deploymentArguments({ ...preparedWebDeployment, openNextConfiguration }));
+  for (const override of [{ target: "unknown" }, { commit: undefined }, { commit: "short" }])
+    assert.throws(() => deploymentArguments({ ...preparedWebDeployment, ...override }));
 });
 
 test("local hosting toolchain cannot inherit provider or database credentials", () => {
