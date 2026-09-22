@@ -51,6 +51,12 @@ export class HostedAuthMemoryStore implements CplHostedAuthStore {
     return session;
   };
   readSession = async (hash: string) => this.sessions.get(hash) ?? null;
+  readSessionWithPasskey = async (hash: string) => {
+    const session = this.sessions.get(hash);
+    return session
+      ? { session, hasPasskey: (this.credentials.get(session.identityId)?.length ?? 0) > 0 }
+      : null;
+  };
   rotateSession = async (input: Parameters<CplHostedAuthStore["rotateSession"]>[0]) => {
     const previous = this.sessions.get(input.tokenHash);
     if (!previous) throw new CplHostedAuthenticationError();

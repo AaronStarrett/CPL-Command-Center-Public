@@ -223,6 +223,19 @@ export class SqlCplHostedAuthStore implements CplHostedAuthStore {
       return row ? this.representation(executor, row) : null;
     });
   }
+  async readSessionWithPasskey(tokenHash: string, now: string) {
+    return this.database.transaction(async (executor) => {
+      const row = await this.sessionRow(executor, tokenHash, iso(now));
+      if (!row) return null;
+      const session = await this.representation(executor, row);
+      const result = await executor.query<{ has_passkey: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM cpl_webauthn_credentials c JOIN cpl_identities i ON i.id=c.identity_id WHERE c.identity_id=$1 AND i.status='active') AS has_passkey",
+        [session.identityId],
+      );
+      if (result.rows.length !== 1 || typeof result.rows[0]?.has_passkey !== "boolean") fail();
+      return { session, hasPasskey: result.rows[0].has_passkey };
+    });
+  }
   private async rotate(
     executor: SqlExecutor,
     row: Row,

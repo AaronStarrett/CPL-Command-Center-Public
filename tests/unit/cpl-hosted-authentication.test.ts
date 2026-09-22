@@ -59,6 +59,53 @@ async function enrolled() {
 }
 
 describe("Hosted sessions and CSRF", () => {
+  it("passkey existence uses a second fresh session without loading credential material", async () => {
+    const { service, store, signedIn } = await setup();
+    expect(await service.readSession(signedIn.sessionToken)).not.toBeNull();
+    const composite = vi.spyOn(store, "readSessionWithPasskey");
+    const credentials = vi.spyOn(store, "listCredentials");
+    expect(await service.hasPasskey(signedIn.sessionToken)).toBe(false);
+    expect(composite).toHaveBeenCalledExactlyOnceWith(
+      hostedTokenHash(signedIn.sessionToken),
+      expect.any(String),
+    );
+    expect(credentials).not.toHaveBeenCalled();
+    await store.revokeSession(hostedTokenHash(signedIn.sessionToken));
+    await expect(service.hasPasskey(signedIn.sessionToken)).rejects.toThrow(
+      "CPL_AUTHENTICATION_REQUIRED",
+    );
+  });
+
+  it("passkey session expiry is rechecked after the whole composite resolves", async () => {
+    const { service, store, signedIn, advance } = await setup();
+    const read = store.readSessionWithPasskey;
+    vi.spyOn(store, "readSessionWithPasskey").mockImplementation(async (hash) => {
+      const result = await read(hash);
+      advance(60 * 60_000);
+      return result;
+    });
+    await expect(service.hasPasskey(signedIn.sessionToken)).rejects.toThrow(
+      "CPL_AUTHENTICATION_REQUIRED",
+    );
+  });
+
+  it.each(["expiresAt", "absoluteExpiresAt"] as const)(
+    "composite rejects invalid %s and malformed tokens",
+    async (field) => {
+      const { service, store, signedIn } = await setup();
+      const read = vi.spyOn(store, "readSessionWithPasskey");
+      await expect(service.hasPasskey("malformed")).rejects.toThrow("CPL_AUTHENTICATION_REQUIRED");
+      expect(read).not.toHaveBeenCalled();
+      store.sessions.set(hostedTokenHash(signedIn.sessionToken), {
+        ...signedIn.session,
+        [field]: "invalid-time",
+      });
+      await expect(service.hasPasskey(signedIn.sessionToken)).rejects.toThrow(
+        "CPL_AUTHENTICATION_REQUIRED",
+      );
+    },
+  );
+
   it("binds and consumes OAuth state once, creates no MFA/admin, and rejects external return targets", async () => {
     const context = await setup();
     expect(context.signedIn.returnTo).toBe("/workspace");

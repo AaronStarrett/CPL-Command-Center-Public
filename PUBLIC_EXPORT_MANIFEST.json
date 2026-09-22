@@ -1918,9 +1918,9 @@
     },
     {
       "path": "apps/web/lib/hosted-auth.ts",
-      "sha256": "fd6799506171d62b05b169498b9d312f30cb2c7c1d1a8ec37c4aa5cec9bd9d59",
-      "sourceSha256": "fd6799506171d62b05b169498b9d312f30cb2c7c1d1a8ec37c4aa5cec9bd9d59",
-      "size": 8942,
+      "sha256": "e46167934ed3c19ed9a1314516e19afe2b8d6a16924d18f44877876cd3d9a782",
+      "sourceSha256": "e46167934ed3c19ed9a1314516e19afe2b8d6a16924d18f44877876cd3d9a782",
+      "size": 9090,
       "adaptation": null
     },
     {
@@ -2303,9 +2303,9 @@
     },
     {
       "path": "docs/FILE_INVENTORY.md",
-      "sha256": "4db7848099e0d610775c215c5709c232533b0d23061e1e901428b5e61688dc7d",
+      "sha256": "c87bd8d2f0b252f0ff355bf07bfc4f7ad739018e57cede2261dfc7dc178db027",
       "sourceSha256": null,
-      "size": 117835,
+      "size": 118339,
       "adaptation": "generated-public-metadata"
     },
     {
@@ -3269,9 +3269,9 @@
     },
     {
       "path": "packages/database/src/hosted-auth-store.ts",
-      "sha256": "d29f269ae801b97c6770a7aca87eca57c2c181e317e9989f9a283a4cbfa698b1",
-      "sourceSha256": "d29f269ae801b97c6770a7aca87eca57c2c181e317e9989f9a283a4cbfa698b1",
-      "size": 20526,
+      "sha256": "af11001c4b01fc702adeb398b1dacae8addb5c5740368eaaf566234a1707ce62",
+      "sourceSha256": "af11001c4b01fc702adeb398b1dacae8addb5c5740368eaaf566234a1707ce62",
+      "size": 21269,
       "adaptation": null
     },
     {
@@ -3289,6 +3289,13 @@
       "adaptation": null
     },
     {
+      "path": "packages/database/src/hosted-web-role-guard.ts",
+      "sha256": "2ed2049a382c4af79e3ecac85f1eaa37b768f82f3d34163bda9bae4c320f14df",
+      "sourceSha256": "2ed2049a382c4af79e3ecac85f1eaa37b768f82f3d34163bda9bae4c320f14df",
+      "size": 3137,
+      "adaptation": null
+    },
+    {
       "path": "packages/database/src/hosted-workflow.ts",
       "sha256": "0a133e986b84cd0f94e033e4f1fcb3e2652eb077cecb3e5e2cc01ffbeacc53bc",
       "sourceSha256": "0a133e986b84cd0f94e033e4f1fcb3e2652eb077cecb3e5e2cc01ffbeacc53bc",
@@ -3297,9 +3304,9 @@
     },
     {
       "path": "packages/database/src/hosted.ts",
-      "sha256": "b402fb563b64b6872aa88b1ef47a00a80d97b967dfb437a1e8fa648829fd6c34",
-      "sourceSha256": "b402fb563b64b6872aa88b1ef47a00a80d97b967dfb437a1e8fa648829fd6c34",
-      "size": 404,
+      "sha256": "616c9b0016209db995915df23523c8b1226cd6613a2bd3b29bc9fd8218e6ea65",
+      "sourceSha256": "616c9b0016209db995915df23523c8b1226cd6613a2bd3b29bc9fd8218e6ea65",
+      "size": 448,
       "adaptation": null
     },
     {
@@ -3871,16 +3878,16 @@
     },
     {
       "path": "packages/security/src/hosted-authentication-contracts.ts",
-      "sha256": "fdc85f59365f0c55993ba2eb2729ee40c846103eb715e067a4556e1725ddfe11",
-      "sourceSha256": "fdc85f59365f0c55993ba2eb2729ee40c846103eb715e067a4556e1725ddfe11",
-      "size": 5156,
+      "sha256": "53a147cb7c73656d33ad65f5c7c48cb97619497f11b54d669d84ce7d43193485",
+      "sourceSha256": "53a147cb7c73656d33ad65f5c7c48cb97619497f11b54d669d84ce7d43193485",
+      "size": 5484,
       "adaptation": null
     },
     {
       "path": "packages/security/src/hosted-authentication.ts",
-      "sha256": "5156616b3556abb6a2598e94ac5b5a7fa0e7fd9557180c21963b31f58235139b",
-      "sourceSha256": "5156616b3556abb6a2598e94ac5b5a7fa0e7fd9557180c21963b31f58235139b",
-      "size": 16151,
+      "sha256": "c4971979fdf32d19154db91d7c906475c2ca28e5fa9a485053ecd772b560acfe",
+      "sourceSha256": "c4971979fdf32d19154db91d7c906475c2ca28e5fa9a485053ecd772b560acfe",
+      "size": 16660,
       "adaptation": null
     },
     {
@@ -5586,9 +5593,9 @@
     },
     {
       "path": "tests/fixtures/hosted-auth-memory-store.ts",
-      "sha256": "7cb7cc382fd17344853e3e3e2b8254d02697e486ac732f095e6f89d73cdb63c0",
-      "sourceSha256": "7cb7cc382fd17344853e3e3e2b8254d02697e486ac732f095e6f89d73cdb63c0",
-      "size": 4715,
+      "sha256": "c4220e8509aeb40e12746fe5c079d022da7edab0680ae63cc5b71d909bd6658b",
+      "sourceSha256": "c4220e8509aeb40e12746fe5c079d022da7edab0680ae63cc5b71d909bd6658b",
+      "size": 4944,
       "adaptation": null
     },
     {
@@ -5624,6 +5631,13 @@
       "sha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
       "sourceSha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
       "size": 39221,
+      "adaptation": null
+    },
+    {
+      "path": "tests/integration/cpl-hosted-session-passkey.test.ts",
+      "sha256": "07906b4222112efd596182a3c74cc29389c73b8fd994d30863859304e2e90724",
+      "sourceSha256": "07906b4222112efd596182a3c74cc29389c73b8fd994d30863859304e2e90724",
+      "size": 6618,
       "adaptation": null
     },
     {
@@ -5943,9 +5957,9 @@
     },
     {
       "path": "tests/unit/cpl-hosted-authentication.test.ts",
-      "sha256": "3b50235a90a50b19818f546bd32b8669bd6f22e0ac3edaa12967851f44967cce",
-      "sourceSha256": "3b50235a90a50b19818f546bd32b8669bd6f22e0ac3edaa12967851f44967cce",
-      "size": 13657,
+      "sha256": "50fdef08fe0339d8b3ebdd28214c2851e744c079118fee090dbc2a6a8e9c6c72",
+      "sourceSha256": "50fdef08fe0339d8b3ebdd28214c2851e744c079118fee090dbc2a6a8e9c6c72",
+      "size": 15663,
       "adaptation": null
     },
     {
@@ -5957,9 +5971,9 @@
     },
     {
       "path": "tests/unit/cpl-hosted-hyperdrive-runtime.test.ts",
-      "sha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
-      "sourceSha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
-      "size": 10501,
+      "sha256": "61dbff99a88fb16702df1e4b03d8b0f2ea17e81cae1cb869345257de244703f0",
+      "sourceSha256": "61dbff99a88fb16702df1e4b03d8b0f2ea17e81cae1cb869345257de244703f0",
+      "size": 10952,
       "adaptation": null
     },
     {
@@ -5971,9 +5985,23 @@
     },
     {
       "path": "tests/unit/cpl-hosted-runtime.test.ts",
-      "sha256": "a495980a9a5fcf201afeb58298c31cc23f9f13592a404a55281f7710755eeb26",
-      "sourceSha256": "a495980a9a5fcf201afeb58298c31cc23f9f13592a404a55281f7710755eeb26",
-      "size": 7737,
+      "sha256": "36e678989a76ab8868e7323d51b2ede55a11f17d26ac38fe3a49c7f8eca9af67",
+      "sourceSha256": "36e678989a76ab8868e7323d51b2ede55a11f17d26ac38fe3a49c7f8eca9af67",
+      "size": 7811,
+      "adaptation": null
+    },
+    {
+      "path": "tests/unit/cpl-hosted-session-query-counts.test.ts",
+      "sha256": "ebd557e67d944c22a1296a43a8b90a4f324d66d61dadfaa1f837515dae949b19",
+      "sourceSha256": "ebd557e67d944c22a1296a43a8b90a4f324d66d61dadfaa1f837515dae949b19",
+      "size": 6637,
+      "adaptation": null
+    },
+    {
+      "path": "tests/unit/cpl-hosted-web-role-guard.test.ts",
+      "sha256": "e892b5e845b8e9dc876f2da0c1444e842144e98590caf67613168057cd57c9a7",
+      "sourceSha256": "e892b5e845b8e9dc876f2da0c1444e842144e98590caf67613168057cd57c9a7",
+      "size": 9490,
       "adaptation": null
     },
     {

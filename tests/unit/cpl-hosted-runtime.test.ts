@@ -10,6 +10,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
 vi.mock("@bea/database/hosted", async () => ({
   ...(await import("../../packages/database/src/hosted-connection")),
+  ...(await import("../../packages/database/src/hosted-web-role-guard")),
   verifyHostedDatabaseRole: (await import("../../packages/database/src/hosted-database-role"))
     .verifyHostedDatabaseRole,
   PgDatabaseAdapter: class {

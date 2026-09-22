@@ -71,6 +71,15 @@ export interface CplHostedAuthStore {
     readonly now: string;
   }): Promise<CplHostedSession>;
   readSession(tokenHash: string, now: string): Promise<CplHostedSession | null>;
+  /** Fresh session/organization representation and active-identity credential
+   * existence share one transaction; this never returns credential material. */
+  readSessionWithPasskey(
+    tokenHash: string,
+    now: string,
+  ): Promise<{
+    readonly session: CplHostedSession;
+    readonly hasPasskey: boolean;
+  } | null>;
   rotateSession(input: {
     readonly tokenHash: string;
     readonly material: CplHostedSessionMaterial;

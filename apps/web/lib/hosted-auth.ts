@@ -10,6 +10,7 @@ import {
   hyperdriveConnection,
   hyperdriveTimeoutIntent,
   withHyperdriveDeadlines,
+  withHostedWebRoleGuard,
   type DatabaseAdapter,
   type CplTenantPermission,
   type CplTenantRequest,
@@ -158,12 +159,14 @@ export async function withHostedRuntime<T>(
       ? { ...hyperdriveTimeoutIntent("web"), query_timeout: 15_000 }
       : {}),
   });
+  let database: DatabaseAdapter = connection;
   try {
-    const database =
+    database =
       configuration.databaseTransport === "hyperdrive"
-        ? withHyperdriveDeadlines(connection, "web")
+        ? withHostedWebRoleGuard(withHyperdriveDeadlines(connection, "web"))
         : connection;
-    await verifyHostedDatabaseRole(database, "web");
+    if (configuration.databaseTransport !== "hyperdrive")
+      await verifyHostedDatabaseRole(database, "web");
     const store = new SqlCplHostedAuthStore(database);
     const oidc = new GoogleOidcAdapter({
       appOrigin: configuration.origin,
@@ -177,7 +180,7 @@ export async function withHostedRuntime<T>(
       origin: configuration.origin,
     });
   } finally {
-    await connection.close();
+    await database.close();
   }
 }
 

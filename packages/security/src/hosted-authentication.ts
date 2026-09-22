@@ -191,6 +191,10 @@ export class CplHostedAuthService {
       hostedTokenHash(sessionToken),
       this.now().toISOString(),
     );
+    return this.currentSession(session);
+  }
+
+  private currentSession(session: CplHostedSession | null): CplHostedSession | null {
     if (!session) return null;
     const expiresAt = Date.parse(session.expiresAt);
     const absoluteExpiresAt = Date.parse(session.absoluteExpiresAt);
@@ -268,8 +272,15 @@ export class CplHostedAuthService {
   }
 
   async hasPasskey(sessionToken: string): Promise<boolean> {
-    const session = await this.requireSession(sessionToken);
-    return (await this.store.listCredentials(session.identityId)).length > 0;
+    if (!/^[A-Za-z0-9_-]{43}$/u.test(sessionToken)) throw new CplHostedAuthenticationError();
+    const result = await this.store.readSessionWithPasskey(
+      hostedTokenHash(sessionToken),
+      this.now().toISOString(),
+    );
+    // Recheck expiry after the complete transaction, including the credential
+    // read, rather than accepting a session that expired while awaiting SQL.
+    if (!result || !this.currentSession(result.session)) throw new CplHostedAuthenticationError();
+    return result.hasPasskey;
   }
 
   private async challenge(session: CplHostedSession, kind: CplHostedCeremony, challenge: string) {

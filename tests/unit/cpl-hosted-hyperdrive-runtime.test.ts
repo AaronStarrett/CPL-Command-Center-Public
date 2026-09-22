@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("@bea/database/hosted", async () => ({
   ...(await import("../../packages/database/src/hosted-connection")),
+  ...(await import("../../packages/database/src/hosted-web-role-guard")),
   verifyHostedDatabaseRole: (await import("../../packages/database/src/hosted-database-role"))
     .verifyHostedDatabaseRole,
   PgDatabaseAdapter: class {
@@ -133,7 +134,7 @@ describe("Hyperdrive web invocation isolation", () => {
         configured: true,
         missing: [],
       });
-      await withHostedRuntime(async () => "synthetic-result");
+      await withHostedRuntime(async (runtime) => runtime.database.query("SELECT 1 AS application"));
     });
     expect(state.configurations[0]).toMatchObject({
       connectionString: selected.connectionString,
@@ -179,9 +180,12 @@ describe("Hyperdrive web invocation isolation", () => {
     state.safeRole = false;
     const operation = vi.fn();
     await context.run({ env: { CPL_WEB_DB: binding() } }, async () => {
-      await expect(withHostedRuntime(operation)).rejects.toThrow(
-        "CPL_HOSTED_DATABASE_ROLE_REFUSED",
-      );
+      await expect(
+        withHostedRuntime(async (runtime) => {
+          await runtime.database.query("SELECT 1 AS application");
+          operation();
+        }),
+      ).rejects.toThrow("CPL_HOSTED_DATABASE_ROLE_REFUSED");
     });
     expect(operation).not.toHaveBeenCalled();
     expect(state.closed).toHaveBeenCalledOnce();
@@ -194,9 +198,12 @@ describe("Hyperdrive web invocation isolation", () => {
       else state.tenantTablesProtected = false;
       const operation = vi.fn();
       await context.run({ env: { CPL_WEB_DB: binding() } }, async () => {
-        await expect(withHostedRuntime(operation)).rejects.toThrow(
-          "CPL_HOSTED_DATABASE_ROLE_REFUSED",
-        );
+        await expect(
+          withHostedRuntime(async (runtime) => {
+            await runtime.database.query("SELECT 1 AS application");
+            operation();
+          }),
+        ).rejects.toThrow("CPL_HOSTED_DATABASE_ROLE_REFUSED");
       });
       expect(state.query).toHaveBeenCalledTimes(2);
       expect(state.query.mock.calls[1]?.[1]).toContain("WITH RECURSIVE inherited");
@@ -209,9 +216,12 @@ describe("Hyperdrive web invocation isolation", () => {
     state.deadline = 0;
     const operation = vi.fn();
     await context.run({ env: { CPL_WEB_DB: binding() } }, async () => {
-      await expect(withHostedRuntime(operation)).rejects.toThrow(
-        "CPL_HYPERDRIVE_SERVER_DEADLINES_REFUSED",
-      );
+      await expect(
+        withHostedRuntime(async (runtime) => {
+          await runtime.database.query("SELECT 1 AS application");
+          operation();
+        }),
+      ).rejects.toThrow("CPL_HYPERDRIVE_SERVER_DEADLINES_REFUSED");
     });
     expect(state.query).toHaveBeenCalledOnce();
     expect(operation).not.toHaveBeenCalled();
