@@ -855,6 +855,7 @@
 | `tests/unit/cpl-hosted-authentication.test.ts`                                              | Reviewed source publication |
 | `tests/unit/cpl-hosted-connection.test.ts`                                                  | Reviewed source publication |
 | `tests/unit/cpl-hosted-hyperdrive-runtime.test.ts`                                          | Reviewed source publication |
+| `tests/unit/cpl-hosted-jobs-transactions.test.ts`                                           | Reviewed source publication |
 | `tests/unit/cpl-hosted-runtime.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-runtime-policy.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-webpack-filesystem.test.ts`                                                 | Reviewed source publication |

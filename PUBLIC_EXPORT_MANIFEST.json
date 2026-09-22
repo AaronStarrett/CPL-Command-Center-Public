@@ -2303,9 +2303,9 @@
     },
     {
       "path": "docs/FILE_INVENTORY.md",
-      "sha256": "6fa2a12aa601a5c8c8e674c5e19f639e68afef84b07a4f8ad103d0a0bfa47296",
+      "sha256": "4db7848099e0d610775c215c5709c232533b0d23061e1e901428b5e61688dc7d",
       "sourceSha256": null,
-      "size": 117709,
+      "size": 117835,
       "adaptation": "generated-public-metadata"
     },
     {
@@ -3276,23 +3276,23 @@
     },
     {
       "path": "packages/database/src/hosted-connection.ts",
-      "sha256": "bb6c142d2c3a193497bc794ffb1f7675396244acf277c97b5a330005e40766d4",
-      "sourceSha256": "bb6c142d2c3a193497bc794ffb1f7675396244acf277c97b5a330005e40766d4",
-      "size": 7938,
+      "sha256": "1c7cceecc50053313ecf0253ced4549a215b337c472f61ef488dd6f524494f0e",
+      "sourceSha256": "1c7cceecc50053313ecf0253ced4549a215b337c472f61ef488dd6f524494f0e",
+      "size": 8470,
       "adaptation": null
     },
     {
       "path": "packages/database/src/hosted-database-role.ts",
-      "sha256": "325ba7566d975695529046641ca5a4263f5a064b8eae63da5fe61f8cd36f26a5",
-      "sourceSha256": "325ba7566d975695529046641ca5a4263f5a064b8eae63da5fe61f8cd36f26a5",
-      "size": 6117,
+      "sha256": "4cccfa4d8340e2f191f67d12dff0fed34512ec88e4f55b08ca4d64927e3d9bed",
+      "sourceSha256": "4cccfa4d8340e2f191f67d12dff0fed34512ec88e4f55b08ca4d64927e3d9bed",
+      "size": 6326,
       "adaptation": null
     },
     {
       "path": "packages/database/src/hosted-workflow.ts",
-      "sha256": "783558e50de3d463cec35ba96a3dc29e6c4cebcdd7d31623f887c63c87855d80",
-      "sourceSha256": "783558e50de3d463cec35ba96a3dc29e6c4cebcdd7d31623f887c63c87855d80",
-      "size": 21982,
+      "sha256": "0a133e986b84cd0f94e033e4f1fcb3e2652eb077cecb3e5e2cc01ffbeacc53bc",
+      "sourceSha256": "0a133e986b84cd0f94e033e4f1fcb3e2652eb077cecb3e5e2cc01ffbeacc53bc",
+      "size": 22081,
       "adaptation": null
     },
     {
@@ -5880,9 +5880,9 @@
     },
     {
       "path": "tests/unit/cloudflare-hosted-worker.test.mjs",
-      "sha256": "f6977cc95dd7619f97cf26c57ed0b1c5a8cf9ad083b75c8674c69753cd110c1c",
-      "sourceSha256": "f6977cc95dd7619f97cf26c57ed0b1c5a8cf9ad083b75c8674c69753cd110c1c",
-      "size": 12683,
+      "sha256": "467a2a2d2d7c4233589c184d7e24e4c706930419dc25439ba0f9bd76279b3d32",
+      "sourceSha256": "467a2a2d2d7c4233589c184d7e24e4c706930419dc25439ba0f9bd76279b3d32",
+      "size": 12661,
       "adaptation": null
     },
     {
@@ -5950,9 +5950,9 @@
     },
     {
       "path": "tests/unit/cpl-hosted-connection.test.ts",
-      "sha256": "3708962ed72b3340718e2157c50d4a8843ee89fa60f9948245aa5fc4ecfb9a70",
-      "sourceSha256": "3708962ed72b3340718e2157c50d4a8843ee89fa60f9948245aa5fc4ecfb9a70",
-      "size": 14658,
+      "sha256": "62e4a9576a70ef184aab1a098521801c340f776e56cbab3ed4591fc854c49c6b",
+      "sourceSha256": "62e4a9576a70ef184aab1a098521801c340f776e56cbab3ed4591fc854c49c6b",
+      "size": 17325,
       "adaptation": null
     },
     {
@@ -5960,6 +5960,13 @@
       "sha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
       "sourceSha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
       "size": 10501,
+      "adaptation": null
+    },
+    {
+      "path": "tests/unit/cpl-hosted-jobs-transactions.test.ts",
+      "sha256": "e6ae2cf4e4a5a894589e42fb30f6f32cde2e8e155b1b4a33daf91ea2dfeb0cfd",
+      "sourceSha256": "e6ae2cf4e4a5a894589e42fb30f6f32cde2e8e155b1b4a33daf91ea2dfeb0cfd",
+      "size": 7167,
       "adaptation": null
     },
     {

@@ -1,4 +1,4 @@
-import type { DatabaseAdapter } from "./adapter.js";
+import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
 
 export type CplHostedDatabasePurpose = "web" | "worker";
 /** Runtime roles cannot migrate, own the database/schema, bypass RLS, register
@@ -6,9 +6,12 @@ export type CplHostedDatabasePurpose = "web" | "worker";
 export async function verifyHostedDatabaseRole(
   database: DatabaseAdapter,
   purpose: CplHostedDatabasePurpose,
+  // A caller already in a transaction supplies that database's executor. This
+  // preserves the full check without checking out a second max-one pool client.
+  executor: SqlExecutor = database,
 ): Promise<{ role: string; purpose: CplHostedDatabasePurpose }> {
   if (database.kind !== "postgres") throw new Error("CPL_HOSTED_POSTGRES_REQUIRED");
-  const result = await database.query<Record<string, unknown>>(`
+  const result = await executor.query<Record<string, unknown>>(`
     WITH RECURSIVE inherited AS (
       SELECT roleid FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)
       UNION SELECT m.roleid FROM pg_auth_members m JOIN inherited i ON m.member=i.roleid

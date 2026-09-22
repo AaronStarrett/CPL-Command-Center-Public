@@ -86,6 +86,16 @@ export function hyperdriveTimeoutIntent(purpose: HostedDatabasePurpose) {
   };
 }
 
+// Only these reviewed purpose constants enter SQL. With no bind parameters, pg
+// uses one simple-protocol query while preserving transaction-local settings and
+// the same returned-value checks. Never interpolate configuration or user input.
+const deadlineSql: Readonly<Record<HostedDatabasePurpose, string>> = {
+  web: `SELECT (extract(epoch FROM set_config('statement_timeout','15000ms',true)::interval)*1000)::integer AS statement_timeout_ms,
+            (extract(epoch FROM set_config('idle_in_transaction_session_timeout','15000ms',true)::interval)*1000)::integer AS idle_timeout_ms`,
+  worker: `SELECT (extract(epoch FROM set_config('statement_timeout','4000ms',true)::interval)*1000)::integer AS statement_timeout_ms,
+            (extract(epoch FROM set_config('idle_in_transaction_session_timeout','4000ms',true)::interval)*1000)::integer AS idle_timeout_ms`,
+};
+
 /** Hyperdrive can choose a different origin connection after every transaction.
  * Enforce deadlines on the same transaction as the work, independent of startup
  * parameter forwarding. One setup statement is added to each transaction;
@@ -105,11 +115,7 @@ export function withHyperdriveDeadlines(
         const result = await executor.query<{
           statement_timeout_ms: number;
           idle_timeout_ms: number;
-        }>(
-          `SELECT (extract(epoch FROM set_config('statement_timeout',$1,true)::interval)*1000)::integer AS statement_timeout_ms,
-            (extract(epoch FROM set_config('idle_in_transaction_session_timeout',$2,true)::interval)*1000)::integer AS idle_timeout_ms`,
-          [`${milliseconds}ms`, `${deadlines.idle_in_transaction_session_timeout}ms`],
-        );
+        }>(deadlineSql[purpose]);
         if (
           result.rows.length !== 1 ||
           result.rows[0]?.statement_timeout_ms !== milliseconds ||

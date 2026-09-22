@@ -435,11 +435,12 @@ export async function processHostedJobs(
 ): Promise<CplHostedJobResult> {
   if ((options.limit ?? 1) !== 1 || !/^[A-Za-z0-9._:-]{1,120}$/u.test(options.claimOwner))
     fail("CPL_INVALID_JOB_INVOCATION");
-  await verifyHostedDatabaseRole(database, "worker");
+  if (database.kind !== "postgres") throw new Error("CPL_HOSTED_POSTGRES_REQUIRED");
   const result: CplHostedJobResult = { claimed: 0, completed: 0, retried: 0, failed: 0 };
   const leaseToken = randomUUID();
   const claimed = await database.transaction<(Row & { exhausted: boolean }) | null>(
     async (executor) => {
+      await verifyHostedDatabaseRole(database, "worker", executor);
       const selected = await executor.query<Row>(
         "SELECT * FROM cpl_workflow_jobs WHERE (status='queued' AND available_at<=CURRENT_TIMESTAMP) OR (status='running' AND lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
       );

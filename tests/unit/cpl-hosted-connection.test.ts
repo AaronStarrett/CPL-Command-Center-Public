@@ -146,7 +146,8 @@ describe("hosted database transport boundary", () => {
 
 describe("Hyperdrive deadlines share the operation's transaction", () => {
   const adapters: PgSqlDatabaseAdapter[] = [];
-  function fixture() {
+  function fixture(purpose: HostedDatabasePurpose = "web") {
+    const milliseconds = purpose === "web" ? 15000 : 4000;
     const base = new PgSqlDatabaseAdapter({ max: 1 });
     adapters.push(base);
     const query = vi.fn<
@@ -159,13 +160,16 @@ describe("Hyperdrive deadlines share the operation's transaction", () => {
       }>
     >(async (sql: string) =>
       sql.includes("set_config('statement_timeout'")
-        ? { rows: [{ statement_timeout_ms: 15000, idle_timeout_ms: 15000 }], rowCount: 1 }
+        ? {
+            rows: [{ statement_timeout_ms: milliseconds, idle_timeout_ms: milliseconds }],
+            rowCount: 1,
+          }
         : { rows: [], rowCount: 0 },
     );
     const release = vi.fn();
     const connect = vi
       .spyOn(base.pool, "connect")
-      .mockResolvedValue({ query, release } as unknown as PoolClient);
+      .mockImplementation(async () => ({ query, release }) as unknown as PoolClient);
     const standalone = vi
       .spyOn(base.pool, "query")
       .mockRejectedValue(new Error("unguarded pool query"));
@@ -175,7 +179,7 @@ describe("Hyperdrive deadlines share the operation's transaction", () => {
       connect,
       release,
       standalone,
-      wrapped: withHyperdriveDeadlines(base, "web"),
+      wrapped: withHyperdriveDeadlines(base, purpose),
     };
   }
   afterEach(async () => {
@@ -191,8 +195,8 @@ describe("Hyperdrive deadlines share the operation's transaction", () => {
     });
     const statements = f.query.mock.calls.map(([sql]) => sql);
     expect(statements[0]).toBe("BEGIN");
-    expect(statements[1]).toContain("set_config('statement_timeout',$1,true)");
-    expect(f.query).toHaveBeenNthCalledWith(2, expect.any(String), ["15000ms", "15000ms"]);
+    expect(statements[1]).toContain("set_config('statement_timeout','15000ms',true)");
+    expect(f.query).toHaveBeenNthCalledWith(2, expect.any(String), []);
     expect(statements.slice(2)).toEqual([
       "SELECT set_config('cpl.organization_id',$1,true)",
       "SELECT 1 AS tenant_work",
@@ -201,6 +205,64 @@ describe("Hyperdrive deadlines share the operation's transaction", () => {
     expect(f.connect).toHaveBeenCalledOnce();
     expect(f.release).toHaveBeenCalledExactlyOnceWith(undefined);
     expect(f.standalone).not.toHaveBeenCalled();
+  });
+
+  it.each(["web", "worker"] as const)(
+    "uses only the fixed %s deadline SQL without protocol bind parameters",
+    async (purpose) => {
+      const f = fixture(purpose);
+      const value = purpose === "web" ? "15000ms" : "4000ms";
+      await f.wrapped.query("SELECT 1 AS guarded_work");
+      const [sql, parameters] = f.query.mock.calls[1]!;
+      expect(sql).toBe(
+        `SELECT (extract(epoch FROM set_config('statement_timeout','${value}',true)::interval)*1000)::integer AS statement_timeout_ms,
+            (extract(epoch FROM set_config('idle_in_transaction_session_timeout','${value}',true)::interval)*1000)::integer AS idle_timeout_ms`,
+      );
+      expect(parameters).toEqual([]);
+      expect(sql).not.toMatch(/\$[12]/u);
+      expect(f.query.mock.calls.map(([statement]) => statement)).toEqual([
+        "BEGIN",
+        sql,
+        "SELECT 1 AS guarded_work",
+        "COMMIT",
+      ]);
+    },
+  );
+
+  it.each(["", "other", "web'; SELECT 1--"])(
+    "refuses unreviewed purpose %s before SQL",
+    (purpose) => {
+      const f = fixture();
+      expect(() => withHyperdriveDeadlines(f.base, purpose as HostedDatabasePurpose)).toThrow(
+        "CPL_HYPERDRIVE_BINDING_REFUSED",
+      );
+      expect(f.connect).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(
+    [
+      [],
+      [
+        { statement_timeout_ms: 15000, idle_timeout_ms: 15000 },
+        { statement_timeout_ms: 15000, idle_timeout_ms: 15000 },
+      ],
+      [{ statement_timeout_ms: 0, idle_timeout_ms: 15000 }],
+      [{ statement_timeout_ms: 15001, idle_timeout_ms: 15000 }],
+      [{ statement_timeout_ms: 15000, idle_timeout_ms: 0 }],
+      [{ statement_timeout_ms: 15000, idle_timeout_ms: 15001 }],
+      [{ statement_timeout_ms: "15000", idle_timeout_ms: 15000 }],
+    ].map((rows) => ({ rows })),
+  )("retains exact deadline readback refusal for malformed result %#", async ({ rows }) => {
+    const f = fixture();
+    f.query.mockImplementation(async () => ({ rows, rowCount: rows.length }));
+    const operation = vi.fn();
+    await expect(f.wrapped.transaction(operation)).rejects.toThrow(
+      "CPL_HYPERDRIVE_SERVER_DEADLINES_REFUSED",
+    );
+    expect(operation).not.toHaveBeenCalled();
+    expect(f.query.mock.calls.at(-1)?.[0]).toBe("ROLLBACK");
+    expect(f.release).toHaveBeenCalledExactlyOnceWith(undefined);
   });
 
   it("wraps each standalone query and execute in its own initialized transaction", async () => {
@@ -261,50 +323,55 @@ describe("Hyperdrive deadlines share the operation's transaction", () => {
     await expect(f.wrapped.close()).rejects.toBe(failure);
   });
 
-  it("executes PostgreSQL deadline SQL and resets local state after commit and both rollback paths in PGlite", async () => {
-    // SQL semantics only: this is not real PostgreSQL, Hyperdrive or CPU evidence.
-    const { PGlite } = await import("@electric-sql/pglite");
-    const sqlDatabase = await PGlite.create();
-    const f = fixture();
-    f.query.mockImplementation(async (sql, parameters) => {
-      const result = await sqlDatabase.query<Record<string, unknown>>(sql, [...(parameters ?? [])]);
-      return { rows: result.rows, rowCount: result.affectedRows ?? result.rows.length };
-    });
-    const settings = "SELECT setting FROM pg_settings WHERE name='statement_timeout'";
-    try {
-      const before = (await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting;
-      const during = await f.wrapped.query<{ setting: string }>(settings);
-      expect(during.rows[0]?.setting).toBe("15000");
-      expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
-        before,
-      );
-      const failure = new Error("synthetic application rollback");
-      await expect(
-        f.wrapped.transaction(async (executor) => {
-          await executor.query("SELECT set_config('cpl.organization_id',$1,true)", [
-            "synthetic-org",
-          ]);
-          throw failure;
-        }),
-      ).rejects.toBe(failure);
-      expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
-        before,
-      );
-      await expect(f.wrapped.query("SELECT 1/0")).rejects.toThrow();
-      expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
-        before,
-      );
-      expect(
-        (
-          await sqlDatabase.query<{ value: string }>(
-            "SELECT current_setting('cpl.organization_id',true) AS value",
-          )
-        ).rows[0]?.value ?? "",
-      ).toBe("");
-    } finally {
-      await sqlDatabase.close();
-    }
-  });
+  it.each(["web", "worker"] as const)(
+    "executes %s deadline SQL and resets local state after commit and both rollback paths in PGlite",
+    async (purpose) => {
+      // SQL semantics only: this is not real PostgreSQL, Hyperdrive or CPU evidence.
+      const { PGlite } = await import("@electric-sql/pglite");
+      const sqlDatabase = await PGlite.create();
+      const f = fixture(purpose);
+      f.query.mockImplementation(async (sql, parameters) => {
+        const result = await sqlDatabase.query<Record<string, unknown>>(sql, [
+          ...(parameters ?? []),
+        ]);
+        return { rows: result.rows, rowCount: result.affectedRows ?? result.rows.length };
+      });
+      const settings = "SELECT setting FROM pg_settings WHERE name='statement_timeout'";
+      try {
+        const before = (await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting;
+        const during = await f.wrapped.query<{ setting: string }>(settings);
+        expect(during.rows[0]?.setting).toBe(purpose === "web" ? "15000" : "4000");
+        expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
+          before,
+        );
+        const failure = new Error("synthetic application rollback");
+        await expect(
+          f.wrapped.transaction(async (executor) => {
+            await executor.query("SELECT set_config('cpl.organization_id',$1,true)", [
+              "synthetic-org",
+            ]);
+            throw failure;
+          }),
+        ).rejects.toBe(failure);
+        expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
+          before,
+        );
+        await expect(f.wrapped.query("SELECT 1/0")).rejects.toThrow();
+        expect((await sqlDatabase.query<{ setting: string }>(settings)).rows[0]?.setting).toBe(
+          before,
+        );
+        expect(
+          (
+            await sqlDatabase.query<{ value: string }>(
+              "SELECT current_setting('cpl.organization_id',true) AS value",
+            )
+          ).rows[0]?.value ?? "",
+        ).toBe("");
+      } finally {
+        await sqlDatabase.close();
+      }
+    },
+  );
 });
 
 describe("Hyperdrive server deadline preflight", () => {

@@ -118,8 +118,7 @@ describe("bounded Cloudflare background worker", () => {
     expect(test.database.transaction).toHaveBeenCalledTimes(1);
     expect(test.database.query).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("set_config('statement_timeout',$1,true)"),
-      ["4000ms", "4000ms"],
+      expect.stringContaining("set_config('statement_timeout','4000ms',true)"),
     );
     expect(test.database.query).toHaveBeenNthCalledWith(2, "SELECT 'synthetic-claim'");
     expect(test.processJobs.mock.calls[0][0]).not.toBe(test.database);
