@@ -142,6 +142,19 @@ export function hostingEnvironment(repositoryRoot, source = process.env) {
   };
 }
 
+export function staticCacheEnvironment(repositoryRoot, source = process.env) {
+  // OpenNext's local cache command initializes an empty platform proxy before
+  // copying static files. This non-secret loopback placeholder satisfies its
+  // Hyperdrive metadata check; no application or database query runs there.
+  // Keep it confined to that child, outside build, preview and deployment.
+  return {
+    ...hostingEnvironment(repositoryRoot, source),
+    WRANGLER_WRITE_LOGS: "false",
+    CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_WEB_DB:
+      "postgresql://cpl_build:unused@127.0.0.1:1/cpl_build",
+  };
+}
+
 export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
   const options = parseHostingArguments(arguments_);
   const boundary = assertRepositoryBoundary({ cwd: root, target: root });
@@ -259,7 +272,7 @@ export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
     // no remote cache service is required. Hash the completed output afterward.
     result = spawnSync(process.execPath, [cli, "populateCache", "local"], {
       cwd,
-      env: environment,
+      env: staticCacheEnvironment(root, environment),
       stdio: "inherit",
       windowsHide: true,
     });

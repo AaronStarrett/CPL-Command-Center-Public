@@ -8,6 +8,7 @@ import {
   bundledEnvironmentFile,
   hostingEnvironment,
   parseHostingArguments,
+  staticCacheEnvironment,
 } from "../../scripts/cloudflare-hosting.mjs";
 import { publicationPathDecision } from "../../scripts/publication-export.mjs";
 
@@ -70,6 +71,31 @@ test("local hosting toolchain cannot inherit provider or database credentials", 
   assert.equal(environment.CPL_WORKER_DATABASE_URL, undefined);
   assert.equal(environment.CLOUDFLARE_API_TOKEN, undefined);
   assert.match(environment.WRANGLER_LOG_PATH.replaceAll("\\", "/"), /^D:\/Cyber Pirate Labs\//u);
+});
+
+test("static cache preparation isolates its inert binding from credentials and runtime children", () => {
+  const repositoryRoot = "D:/Cyber Pirate Labs/03_ENGINEERING/Repositories/CPL-Command-Center";
+  const source = {
+    DATABASE_URL: "synthetic-private",
+    CLOUDFLARE_API_TOKEN: "synthetic-private",
+    CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_WEB_DB: "synthetic-private",
+    CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_JOBS_DB: "synthetic-private",
+  };
+  const environment = staticCacheEnvironment(repositoryRoot, source);
+  const connection = new URL(environment.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_WEB_DB);
+  assert.equal(connection.hostname, "127.0.0.1");
+  assert.equal(connection.port, "1");
+  assert.equal(connection.pathname, "/cpl_build");
+  assert.equal(environment.CLOUDFLARE_API_TOKEN, undefined);
+  assert.equal(environment.DATABASE_URL, "");
+  assert.equal(environment.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_JOBS_DB, undefined);
+  assert.equal(environment.WRANGLER_WRITE_LOGS, "false");
+  assert.equal(
+    source.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_WEB_DB,
+    "synthetic-private",
+  );
+  const runtime = hostingEnvironment(repositoryRoot, environment);
+  assert.equal(runtime.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_CPL_WEB_DB, undefined);
 });
 
 test("hosting children use the invoking Node when inherited Path and PATH conflict", () => {

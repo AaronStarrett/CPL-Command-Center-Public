@@ -4228,9 +4228,9 @@
     },
     {
       "path": "scripts/cloudflare-hosting.mjs",
-      "sha256": "954204a29d604f35da7f101837eab2205c4dba3f6fb20ea06a2430b7318bf328",
-      "sourceSha256": "954204a29d604f35da7f101837eab2205c4dba3f6fb20ea06a2430b7318bf328",
-      "size": 14529,
+      "sha256": "bad68062794461f71c7530922b744cea57767b759ce9129356a467d41e89050e",
+      "sourceSha256": "bad68062794461f71c7530922b744cea57767b759ce9129356a467d41e89050e",
+      "size": 15175,
       "adaptation": null
     },
     {
@@ -4977,9 +4977,9 @@
     },
     {
       "path": "tests/bootstrap/cloudflare-hosting.node-test.mjs",
-      "sha256": "1fa3cbbb4b47e9028cc1afd3a177438bec8c26f1b04e4adfe283b1e3cc579b5e",
-      "sourceSha256": "1fa3cbbb4b47e9028cc1afd3a177438bec8c26f1b04e4adfe283b1e3cc579b5e",
-      "size": 10339,
+      "sha256": "7f7c24dcda33fca9d297094f35db3940983e6ea4d47eab896048f71abd2366cb",
+      "sourceSha256": "7f7c24dcda33fca9d297094f35db3940983e6ea4d47eab896048f71abd2366cb",
+      "size": 11696,
       "adaptation": null
     },
     {
