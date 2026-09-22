@@ -81,13 +81,31 @@ describe("bounded Cloudflare background worker", () => {
     });
     expect(test.database.close).toHaveBeenCalledTimes(1);
     expect(test.database.query).not.toHaveBeenCalled();
-    expect(test.logger.info).toHaveBeenCalledWith({
-      code: "CPL_HOSTED_JOBS_COMPLETE",
-      claimed: 1,
-      completed: 1,
-      retried: 0,
-      failed: 0,
+    expect(test.logger.info).toHaveBeenCalledExactlyOnceWith(
+      '{"code":"CPL_HOSTED_JOBS_COMPLETE","claimed":1,"completed":1,"retried":0,"failed":0}',
+    );
+  });
+
+  it.each([
+    { claimed: 0, completed: 0, retried: 0, failed: 0 },
+    { claimed: 1, completed: 1, retried: 0, failed: 0 },
+    { claimed: 1, completed: 0, retried: 1, failed: 0 },
+    { claimed: 1, completed: 0, retried: 0, failed: 1 },
+  ])("retains exact bounded completion counts in one JSON log %#", async (counts) => {
+    const test = fixture();
+    test.processJobs.mockResolvedValue({
+      ...counts,
+      privateJobContent: "synthetic-private-job-content",
     });
+    await test.scheduled({}, environment("hyperdrive"));
+    expect(test.logger.info).toHaveBeenCalledTimes(1);
+    expect(test.logger.info.mock.calls[0]).toHaveLength(1);
+    const message = test.logger.info.mock.calls[0][0];
+    expect(typeof message).toBe("string");
+    expect(JSON.parse(message)).toEqual({ code: "CPL_HOSTED_JOBS_COMPLETE", ...counts });
+    expect(message).not.toContain("synthetic-private-job-content");
+    expect(test.logger.error).not.toHaveBeenCalled();
+    expect(test.database.close).toHaveBeenCalledTimes(1);
   });
 
   it("uses only the worker binding and sets deadlines in the transaction before claim SQL", async () => {

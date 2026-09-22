@@ -253,6 +253,35 @@ export class SqlCplWorkflowRepository {
         ).rows.map(lead),
     );
   }
+  async readWorkspace(request: CplTenantRequest): Promise<{
+    readonly leads: readonly CplWorkflowLead[];
+    readonly proposals: readonly CplProposalDraft[];
+    readonly jobs: readonly CplWorkflowJob[];
+  }> {
+    return this.tenants.withTenantReadTransaction(
+      request,
+      ["intake-job-tracker", "proposal-builder"],
+      async (executor, access) => {
+        const leads = await executor.query<Row>(
+          "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 ORDER BY created_at DESC,id LIMIT 100",
+          [access.organizationId],
+        );
+        const proposals = await executor.query<Row>(
+          "SELECT * FROM cpl_proposal_drafts WHERE organization_id=$1 AND ($2::uuid IS NULL OR lead_id=$2) ORDER BY created_at DESC,id LIMIT 100",
+          [access.organizationId, null],
+        );
+        const jobs = await executor.query<Row>(
+          "SELECT * FROM cpl_workflow_jobs WHERE organization_id=$1 ORDER BY created_at DESC,id LIMIT 100",
+          [access.organizationId],
+        );
+        return {
+          leads: leads.rows.map(lead),
+          proposals: proposals.rows.map(proposal),
+          jobs: jobs.rows.map(job),
+        };
+      },
+    );
+  }
   async getLead(request: CplTenantRequest & { leadId: string }): Promise<CplWorkflowLead> {
     return this.tenants.withTenantTransaction(
       request,
@@ -442,7 +471,7 @@ export async function processHostedJobs(
     async (executor) => {
       await verifyHostedDatabaseRole(database, "worker", executor);
       const selected = await executor.query<Row>(
-        "SELECT * FROM cpl_workflow_jobs WHERE (status='queued' AND available_at<=CURRENT_TIMESTAMP) OR (status='running' AND lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
+        "SELECT id,attempts,max_attempts FROM cpl_workflow_jobs WHERE (status='queued' AND available_at<=CURRENT_TIMESTAMP) OR (status='running' AND lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
       );
       const row = selected.rows[0];
       if (!row) return null;
@@ -454,7 +483,7 @@ export async function processHostedJobs(
         return { ...row, exhausted: true };
       }
       const updated = await executor.query<Row>(
-        "UPDATE cpl_workflow_jobs SET status='running',attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING *",
+        "UPDATE cpl_workflow_jobs SET status='running',attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,organization_id,proposal_id,proposal_version,issued_by_identity_id,issued_membership_version,attempts,max_attempts",
         [row.id, leaseToken, options.claimOwner],
       );
       return { ...updated.rows[0]!, exhausted: false };
@@ -481,7 +510,7 @@ export async function processHostedJobs(
       // revoked. Acquire it before reading live authorization, then make the
       // preparation mutation itself conditional on that authorization.
       const drafts = await executor.query<Row>(
-        "SELECT * FROM cpl_proposal_drafts WHERE organization_id=$1 AND id=$2 FOR UPDATE",
+        "SELECT id,title,content,version FROM cpl_proposal_drafts WHERE organization_id=$1 AND id=$2 FOR UPDATE",
         [claimed.organization_id, claimed.proposal_id],
       );
       const draft = drafts.rows[0];

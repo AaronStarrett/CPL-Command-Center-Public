@@ -74,13 +74,15 @@ export function createHostedScheduledHandler({
         claimOwner: `cloudflare:${claimId()}`,
         limit: HOSTED_JOB_LIMIT,
       });
-      logger.info({
-        code: "CPL_HOSTED_JOBS_COMPLETE",
-        claimed: result.claimed,
-        completed: result.completed,
-        retried: result.retried,
-        failed: result.failed,
-      });
+      logger.info(
+        JSON.stringify({
+          code: "CPL_HOSTED_JOBS_COMPLETE",
+          claimed: result.claimed,
+          completed: result.completed,
+          retried: result.retried,
+          failed: result.failed,
+        }),
+      );
     } catch {
       // Cloudflare records an invocation failure; durable lease/retry state is
       // owned by PostgreSQL. Never expose connection strings or job contents.

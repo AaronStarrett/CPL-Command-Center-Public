@@ -809,6 +809,7 @@
 | `tests/integration/artifact-route-audit.test.ts`                                            | Reviewed source publication |
 | `tests/integration/cpl-hosted-postgres.test.ts`                                             | Reviewed source publication |
 | `tests/integration/cpl-hosted-session-passkey.test.ts`                                      | Reviewed source publication |
+| `tests/integration/cpl-hosted-workspace.test.ts`                                            | Reviewed source publication |
 | `tests/integration/cpl-tenant-foundation.test.ts`                                           | Reviewed source publication |
 | `tests/integration/database-pglite.test.ts`                                                 | Reviewed source publication |
 | `tests/integration/phase1-database.test.ts`                                                 | Reviewed source publication |
@@ -861,6 +862,7 @@
 | `tests/unit/cpl-hosted-runtime.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-hosted-session-query-counts.test.ts`                                        | Reviewed source publication |
 | `tests/unit/cpl-hosted-web-role-guard.test.ts`                                              | Reviewed source publication |
+| `tests/unit/cpl-hosted-workspace-transactions.test.ts`                                      | Reviewed source publication |
 | `tests/unit/cpl-runtime-policy.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-webpack-filesystem.test.ts`                                                 | Reviewed source publication |
 | `tests/unit/database-service.test.ts`                                                       | Reviewed source publication |

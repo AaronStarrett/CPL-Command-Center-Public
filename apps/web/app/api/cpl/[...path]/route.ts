@@ -155,10 +155,7 @@ export async function GET(request: Request, context: Context) {
               jobs: [],
             });
           const tenant = selectedTenant(current, request, false);
-          await runtime.tenants.authorize({ ...tenant, permission: "records:read" });
-          const leads = await repository.listLeads(tenant);
-          const proposals = await repository.listProposalDrafts(tenant);
-          const jobs = await repository.listJobs(tenant);
+          const { leads, proposals, jobs } = await repository.readWorkspace(tenant);
           return json({
             organizations,
             currentOrganizationId: organizationId,

@@ -328,6 +328,46 @@ export class SqlCplTenantRepository {
   ): Promise<T> {
     return this.authenticated(request, permission, operation, moduleKey(module));
   }
+  /** Trusted server composition for a bounded aggregate read. Every requested
+   * module is locked and authorized before data is read. Session, identity,
+   * membership and organization locks remain held through COMMIT; wall-clock
+   * expiry is checked again on both sides of COMMIT. No access crosses requests. */
+  async withTenantReadTransaction<T>(
+    request: CplTenantRequest,
+    modules: readonly CplModuleKey[],
+    operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
+  ): Promise<T> {
+    const organizationId = uuid(request.organizationId);
+    if (
+      !Array.isArray(modules) ||
+      modules.length < 1 ||
+      modules.length > CPL_MODULE_KEYS.length ||
+      new Set(modules).size !== modules.length
+    )
+      fail("CPL_UNKNOWN_MODULE");
+    const keys = modules.map(moduleKey);
+    let expiresAt = 0;
+    const assertFresh = () => {
+      if (expiresAt <= this.now().getTime()) fail();
+    };
+    const result = await this.database.transaction(async (executor) => {
+      const session = await this.session(executor, request.sessionToken);
+      expiresAt = instant(session.expires_at);
+      const access = await this.member(
+        executor,
+        organizationId,
+        String(session.identity_id),
+        "records:read",
+      );
+      for (const key of keys) await this.entitled(executor, organizationId, key);
+      assertFresh();
+      const value = await operation(executor, access);
+      assertFresh();
+      return value;
+    });
+    assertFresh();
+    return result;
+  }
   private async audit(
     executor: SqlExecutor,
     access: CplTenantAccess,

@@ -7,6 +7,7 @@ const stubs = vi.hoisted(() => ({
   listLeads: vi.fn(),
   listProposals: vi.fn(),
   listJobs: vi.fn(),
+  workspace: vi.fn(),
   createLead: vi.fn(),
   getLead: vi.fn(),
   getProposal: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("@bea/database/hosted", () => ({
     listLeads = stubs.listLeads;
     listProposalDrafts = stubs.listProposals;
     listJobs = stubs.listJobs;
+    readWorkspace = stubs.workspace;
     createLead = stubs.createLead;
     getLead = stubs.getLead;
     getProposalDraft = stubs.getProposal;
@@ -73,6 +75,7 @@ describe("hosted workflow HTTP boundary", () => {
     stubs.listLeads.mockResolvedValue([]);
     stubs.listProposals.mockResolvedValue([]);
     stubs.listJobs.mockResolvedValue([]);
+    stubs.workspace.mockResolvedValue({ leads: [], proposals: [], jobs: [] });
     stubs.organizations.mockResolvedValue([]);
     stubs.createLead.mockResolvedValue({ id: "lead-one" });
   });
@@ -191,7 +194,11 @@ describe("hosted workflow HTTP boundary", () => {
       sessionToken: selected.sessionToken,
       session: { selectedOrganizationId: "concurrently-selected-other-org" },
     });
-    stubs.listLeads.mockResolvedValue([{ id: "lead-a", organizationId: selected.organizationId }]);
+    stubs.workspace.mockResolvedValue({
+      leads: [{ id: "lead-a", organizationId: selected.organizationId }],
+      proposals: [],
+      jobs: [],
+    });
     const result = await GET(
       request("workspace", undefined, { "X-CPL-Organization": "" }),
       context("workspace"),
@@ -202,10 +209,37 @@ describe("hosted workflow HTTP boundary", () => {
       leads: [{ organizationId: selected.organizationId }],
     });
     expect(stubs.session).toHaveBeenCalledTimes(1);
-    expect(stubs.authorize).toHaveBeenCalledWith({ ...selected, permission: "records:read" });
+    expect(stubs.workspace).toHaveBeenCalledWith(selected);
+    expect(stubs.authorize).not.toHaveBeenCalled();
     for (const list of [stubs.listLeads, stubs.listProposals, stubs.listJobs])
-      expect(list).toHaveBeenCalledWith(selected);
+      expect(list).not.toHaveBeenCalled();
   });
+  it("returns the same empty aggregate without reading records when no organization is selected", async () => {
+    stubs.session.mockResolvedValue({
+      sessionToken: selected.sessionToken,
+      session: { selectedOrganizationId: null },
+    });
+    stubs.organizations.mockResolvedValue([{ id: selected.organizationId }]);
+    const result = await GET(request("workspace"), context("workspace"));
+    expect(await result.json()).toEqual({
+      organizations: [{ id: selected.organizationId }],
+      currentOrganizationId: null,
+      leads: [],
+      proposals: [],
+      jobs: [],
+    });
+    expect(stubs.workspace).not.toHaveBeenCalled();
+  });
+  it.each(["CPL_ACCESS_DENIED", "CPL_MODULE_DISABLED", "CPL_WORKSPACE_UNAVAILABLE"])(
+    "returns no partial records when the composite rejects %s",
+    async (code) => {
+      stubs.workspace.mockRejectedValue({ code });
+      const result = await GET(request("workspace"), context("workspace"));
+      expect(result.status).toBe(code === "CPL_WORKSPACE_UNAVAILABLE" ? 503 : 403);
+      expect(await result.json()).toEqual({ code });
+      expect(result.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    },
+  );
   it("checks download query context against the server selection without selecting it", async () => {
     stubs.download.mockResolvedValue({
       content: "# Draft",
