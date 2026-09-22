@@ -1,5 +1,18 @@
-import { lstat, readFile, readFileSync, readlink, stat } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import {
+  lstat,
+  mkdirSync,
+  mkdtempSync,
+  readFile,
+  readFileSync,
+  readlink,
+  stat,
+  writeFileSync,
+} from "node:fs";
+import { rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { Script } from "node:vm";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   DirectoryReadCompatibilityPlugin,
   normalizeDirectoryReadErrors,
@@ -9,6 +22,150 @@ import nextConfig from "../../apps/web/next.config";
 
 type InputFileSystem = Parameters<typeof normalizeDirectoryReadErrors>[0];
 type LinkFileSystem = Parameters<typeof normalizeNonLinkErrors>[0];
+
+it.each([false, true])(
+  "retains cache settings and exempts only @bea copies (server=%s)",
+  (isServer) => {
+    const cache = { type: "filesystem", version: "existing-cache" };
+    const managedPaths = [/node_modules/u];
+    const immutablePaths = ["/immutable"];
+    const existing = "/existing-unmanaged";
+    const config = nextConfig.webpack!(
+      {
+        cache,
+        snapshot: { managedPaths, immutablePaths, unmanagedPaths: [existing] },
+        plugins: [],
+        resolve: {},
+        externals: [],
+      },
+      { isServer } as never,
+    );
+    expect(config.cache).toBe(cache);
+    expect(config.snapshot.managedPaths).toBe(managedPaths);
+    expect(config.snapshot.immutablePaths).toBe(immutablePaths);
+    expect(config.snapshot.unmanagedPaths[0]).toBe(existing);
+    const exclusion = config.snapshot.unmanagedPaths[1] as RegExp;
+    for (const name of [
+      "D:\\repo\\node_modules\\@bea\\security\\src\\hosted.ts",
+      "/repo/node_modules/@bea/database/src/hosted.ts",
+      "/repo/apps/web/node_modules/@bea/domain/src/index.ts",
+    ])
+      expect(exclusion.test(name), name).toBe(true);
+    for (const name of [
+      "/repo/node_modules/next/index.js",
+      "/repo/node_modules/@bea-other/security/index.js",
+      "/repo/packages/security/src/hosted.ts",
+    ])
+      expect(exclusion.test(name), name).toBe(false);
+  },
+);
+
+it("rebuilds changed physical workspace exports with the same package version and persistent cache", async () => {
+  // Fixture compilations must never replace the real hosted dependency graphs.
+  vi.stubEnv("CPL_HOSTED_BUILD", "false");
+  onTestFinished(() => vi.unstubAllEnvs());
+  const parent = path.resolve(".data", "hosting", "webpack-cache-tests");
+  mkdirSync(parent, { recursive: true });
+  const fixture = mkdtempSync(path.join(parent, "fixture-"));
+  onTestFinished(async () => {
+    // Cleanup is limited to this newly created, checked fixture directory.
+    expect(path.dirname(fixture)).toBe(parent);
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  type Compiler = {
+    run(
+      callback: (
+        error: Error | null,
+        stats?: {
+          hasErrors(): boolean;
+          hasWarnings(): boolean;
+          toString(): string;
+        },
+      ) => void,
+    ): void;
+    close(callback: (error?: Error | null) => void): void;
+  };
+  const { webpack } = createRequire(import.meta.url)("next/dist/compiled/webpack/webpack.js") as {
+    webpack(configuration: Record<string, unknown>): Compiler;
+  };
+  async function build(root: string, unmanaged: boolean) {
+    const config = nextConfig.webpack!(
+      {
+        mode: "production",
+        target: "node",
+        context: root,
+        entry: "./entry.js",
+        output: {
+          path: path.join(root, "output"),
+          filename: "bundle.cjs",
+          library: { type: "commonjs2" },
+        },
+        cache: {
+          type: "filesystem",
+          cacheDirectory: path.join(root, "cache"),
+          buildDependencies: { fixture: [path.join(root, "package.json")] },
+        },
+        snapshot: { managedPaths: [/^(.+?[\\/]node_modules[\\])/] },
+        plugins: [],
+        resolve: {},
+        externals: [],
+        optimization: { minimize: false },
+        infrastructureLogging: { level: "error" },
+      },
+      { isServer: true } as never,
+    );
+    // The control reproduces Next's previous managed-package assumption.
+    if (!unmanaged) config.snapshot.unmanagedPaths = [];
+    const compiler = webpack(config);
+    try {
+      await new Promise<void>((resolve, reject) =>
+        compiler.run((error, stats) => {
+          if (error) return reject(error);
+          if (!stats || stats.hasErrors() || stats.hasWarnings())
+            return reject(new Error(stats?.toString() ?? "Missing webpack stats."));
+          resolve();
+        }),
+      );
+    } finally {
+      // A new compiler can only reuse this persisted cache after close flushes it.
+      await new Promise<void>((resolve, reject) =>
+        compiler.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+    const module = { exports: {} as { default: Record<string, string> } };
+    new Script(readFileSync(path.join(root, "output", "bundle.cjs"), "utf8")).runInNewContext({
+      module,
+    });
+    return module.exports.default;
+  }
+  for (const unmanaged of [false, true]) {
+    const root = path.join(fixture, unmanaged ? "unmanaged" : "control");
+    const packageDirectory = path.join(root, "node_modules", "@bea", "cache-fixture");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "cache-fixture", private: true }),
+    );
+    writeFileSync(
+      path.join(root, "entry.js"),
+      'import * as values from "@bea/cache-fixture"; export default values;\n',
+    );
+    const manifest = JSON.stringify({
+      name: "@bea/cache-fixture",
+      version: "1.0.0",
+      main: "index.js",
+    });
+    writeFileSync(path.join(packageDirectory, "package.json"), manifest);
+    const source = path.join(packageDirectory, "index.js");
+    writeFileSync(source, 'export const value = "before";\n');
+    expect((await build(root, unmanaged)).value).toBe("before");
+    writeFileSync(source, 'export const value = "after"; export const added = "new-export";\n');
+    const rebuilt = await build(root, unmanaged);
+    expect(readFileSync(path.join(packageDirectory, "package.json"), "utf8")).toBe(manifest);
+    expect(rebuilt.value).toBe(unmanaged ? "after" : "before");
+    expect(rebuilt.added).toBe(unmanaged ? "new-export" : undefined);
+  }
+}, 60_000);
 
 it("transpiles all web workspace dependencies when exFAT installs physical source copies", () => {
   const visited = new Set<string>();

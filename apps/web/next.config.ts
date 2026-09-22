@@ -58,6 +58,15 @@ const nextConfig: NextConfig = {
     "@bea/ui",
   ],
   webpack(config, { isServer }) {
+    // Physical workspace copies change without a package-version bump. Snapshot
+    // their files individually while retaining Next's cache for installed deps.
+    config.snapshot = {
+      ...config.snapshot,
+      unmanagedPaths: [
+        ...(config.snapshot?.unmanagedPaths ?? []),
+        /[\\/]node_modules[\\/]@bea[\\/]/,
+      ],
+    };
     if (process.env.CPL_HOSTED_BUILD === "true") {
       config.plugins.push(
         new HostedDependencyInputsPlugin(path.join(__dirname, ".next", "cpl-dependency-inputs")),

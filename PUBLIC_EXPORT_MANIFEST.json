@@ -2121,9 +2121,9 @@
     },
     {
       "path": "apps/web/next.config.ts",
-      "sha256": "77e4e910c48c3374e482e3efb80aec24798294e5d03e13a5c49eedbcf3ba60c0",
-      "sourceSha256": "77e4e910c48c3374e482e3efb80aec24798294e5d03e13a5c49eedbcf3ba60c0",
-      "size": 3793,
+      "sha256": "248c33a646a8cebdcdd03c1978347675c355972d9a4b712ddb49d2ec852cbb83",
+      "sourceSha256": "248c33a646a8cebdcdd03c1978347675c355972d9a4b712ddb49d2ec852cbb83",
+      "size": 4140,
       "adaptation": null
     },
     {
@@ -5957,9 +5957,9 @@
     },
     {
       "path": "tests/unit/cpl-webpack-filesystem.test.ts",
-      "sha256": "f63f580b6bd52b0fb6f442c9fb917c2ca8aa4178c35729c5ea1e9fda93c2c4ef",
-      "sourceSha256": "f63f580b6bd52b0fb6f442c9fb917c2ca8aa4178c35729c5ea1e9fda93c2c4ef",
-      "size": 7943,
+      "sha256": "ff14198725f99113a7bab2f5b20deb6d26751a9a4f1372093ed0eb085c10f8d0",
+      "sourceSha256": "ff14198725f99113a7bab2f5b20deb6d26751a9a4f1372093ed0eb085c10f8d0",
+      "size": 13812,
       "adaptation": null
     },
     {
