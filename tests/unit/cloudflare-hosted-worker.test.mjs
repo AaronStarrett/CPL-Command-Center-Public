@@ -7,16 +7,18 @@ import {
 
 const syntheticDatabase = "postgres://worker:synthetic@database.invalid/test";
 const syntheticHyperdriveHost = "0123456789abcdef0123456789abcdef.hyperdrive.local";
+const syntheticFrontendDatabase = "3".repeat(32);
+const syntheticFrontendUser = "1".repeat(32);
 const syntheticHyperdriveUrl = new URL(
-  `postgresql://${syntheticHyperdriveHost}:5432/cpl_command_center?sslmode=disable`,
+  `postgresql://${syntheticHyperdriveHost}:5432/${syntheticFrontendDatabase}?sslmode=disable`,
 );
-syntheticHyperdriveUrl.username = "cpl_worker_runtime";
+syntheticHyperdriveUrl.username = syntheticFrontendUser;
 syntheticHyperdriveUrl.password = "synthetic";
 const syntheticHyperdrive = {
   host: syntheticHyperdriveHost,
   port: 5432,
-  database: "cpl_command_center",
-  user: "cpl_worker_runtime",
+  database: syntheticFrontendDatabase,
+  user: syntheticFrontendUser,
   password: "synthetic",
   connectionString: syntheticHyperdriveUrl.toString(),
 };

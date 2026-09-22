@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
   query: vi.fn(),
   transactions: vi.fn(),
   safeRole: true,
+  rolePurpose: "web",
+  tenantTablesProtected: true,
   deadline: 15000,
 }));
 vi.mock("server-only", () => ({}));
@@ -31,7 +33,7 @@ vi.mock("@bea/database/hosted", async () => ({
         rows: [
           {
             rolname: "cpl_web_runtime",
-            purpose: "web",
+            purpose: state.rolePurpose,
             rolsuper: false,
             rolbypassrls: !state.safeRole,
             rolcreatedb: false,
@@ -44,7 +46,7 @@ vi.mock("@bea/database/hosted", async () => ({
             can_change_role_registry: false,
             can_read_legacy_leads: false,
             owns_application_tables: false,
-            tenant_tables_protected: true,
+            tenant_tables_protected: state.tenantTablesProtected,
           },
         ],
         rowCount: 1,
@@ -75,14 +77,16 @@ const configuration = {
 };
 function binding(character = "a") {
   const host = character.repeat(32) + ".hyperdrive.local";
-  const url = new URL(`postgresql://${host}:5432/cpl_command_center?sslmode=disable`);
-  url.username = "cpl_web_runtime";
+  const database = "3".repeat(32);
+  const user = "1".repeat(32);
+  const url = new URL(`postgresql://${host}:5432/${database}?sslmode=disable`);
+  url.username = user;
   url.password = "synthetic-platform-capability";
   return {
     host,
     port: 5432,
-    database: "cpl_command_center",
-    user: "cpl_web_runtime",
+    database,
+    user,
     password: "synthetic-platform-capability",
     connectionString: url.toString(),
   };
@@ -107,6 +111,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.configurations.length = 0;
   state.safeRole = true;
+  state.rolePurpose = "web";
+  state.tenantTablesProtected = true;
   state.deadline = 15000;
   for (const [key, value] of Object.entries(configuration)) vi.stubEnv(key, value);
   vi.stubEnv("DATABASE_URL", "postgresql://synthetic:synthetic@direct.example.test/cpl");
@@ -180,6 +186,24 @@ describe("Hyperdrive web invocation isolation", () => {
     expect(operation).not.toHaveBeenCalled();
     expect(state.closed).toHaveBeenCalledOnce();
   });
+
+  it.each(["wrong-purpose", "missing-tenant-RLS"])(
+    "refuses %s at the origin before application work despite valid frontend credentials",
+    async (failure) => {
+      if (failure === "wrong-purpose") state.rolePurpose = "worker";
+      else state.tenantTablesProtected = false;
+      const operation = vi.fn();
+      await context.run({ env: { CPL_WEB_DB: binding() } }, async () => {
+        await expect(withHostedRuntime(operation)).rejects.toThrow(
+          "CPL_HOSTED_DATABASE_ROLE_REFUSED",
+        );
+      });
+      expect(state.query).toHaveBeenCalledTimes(2);
+      expect(state.query.mock.calls[1]?.[1]).toContain("WITH RECURSIVE inherited");
+      expect(operation).not.toHaveBeenCalled();
+      expect(state.closed).toHaveBeenCalledOnce();
+    },
+  );
 
   it("refuses failed same-transaction deadline setup before role or application work", async () => {
     state.deadline = 0;

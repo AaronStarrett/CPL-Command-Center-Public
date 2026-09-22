@@ -3276,9 +3276,9 @@
     },
     {
       "path": "packages/database/src/hosted-connection.ts",
-      "sha256": "32ff1676ba8a6b367c6ec3a2163ffbac68607f5d5552bd530e6fb138c47ac7cf",
-      "sourceSha256": "32ff1676ba8a6b367c6ec3a2163ffbac68607f5d5552bd530e6fb138c47ac7cf",
-      "size": 7713,
+      "sha256": "bb6c142d2c3a193497bc794ffb1f7675396244acf277c97b5a330005e40766d4",
+      "sourceSha256": "bb6c142d2c3a193497bc794ffb1f7675396244acf277c97b5a330005e40766d4",
+      "size": 7938,
       "adaptation": null
     },
     {
@@ -5880,9 +5880,9 @@
     },
     {
       "path": "tests/unit/cloudflare-hosted-worker.test.mjs",
-      "sha256": "8a5e32e75aee884935ed6e155bcc2bc19991bca9f2dc2038ed987095c3574ad5",
-      "sourceSha256": "8a5e32e75aee884935ed6e155bcc2bc19991bca9f2dc2038ed987095c3574ad5",
-      "size": 12570,
+      "sha256": "f6977cc95dd7619f97cf26c57ed0b1c5a8cf9ad083b75c8674c69753cd110c1c",
+      "sourceSha256": "f6977cc95dd7619f97cf26c57ed0b1c5a8cf9ad083b75c8674c69753cd110c1c",
+      "size": 12683,
       "adaptation": null
     },
     {
@@ -5950,16 +5950,16 @@
     },
     {
       "path": "tests/unit/cpl-hosted-connection.test.ts",
-      "sha256": "119314b0860c9a4e8b80e3bc639f8af27ca501f2ea11f8881c4b545688e50a6f",
-      "sourceSha256": "119314b0860c9a4e8b80e3bc639f8af27ca501f2ea11f8881c4b545688e50a6f",
-      "size": 13189,
+      "sha256": "3708962ed72b3340718e2157c50d4a8843ee89fa60f9948245aa5fc4ecfb9a70",
+      "sourceSha256": "3708962ed72b3340718e2157c50d4a8843ee89fa60f9948245aa5fc4ecfb9a70",
+      "size": 14658,
       "adaptation": null
     },
     {
       "path": "tests/unit/cpl-hosted-hyperdrive-runtime.test.ts",
-      "sha256": "c24e42befb914aed26b0918e9472b8600dba67066512131d1b5cad407af7c28f",
-      "sourceSha256": "c24e42befb914aed26b0918e9472b8600dba67066512131d1b5cad407af7c28f",
-      "size": 9566,
+      "sha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
+      "sourceSha256": "f8227685dda6e94969a6d7209cccac619ede9e00549d0baafbdd4b544d252449",
+      "size": 10501,
       "adaptation": null
     },
     {

@@ -13,15 +13,16 @@ import {
 
 function binding(purpose: HostedDatabasePurpose = "web") {
   const host = "a".repeat(32) + ".hyperdrive.local";
-  const user = purpose === "web" ? "cpl_web_runtime" : "cpl_worker_runtime";
+  const user = (purpose === "web" ? "1" : "2").repeat(32);
+  const database = (purpose === "web" ? "3" : "4").repeat(32);
   const password = "synthetic:p@ss/with%encoding";
-  const url = new URL(`postgresql://${host}:5432/cpl_command_center?sslmode=disable`);
+  const url = new URL(`postgresql://${host}:5432/${database}?sslmode=disable`);
   url.username = user;
   url.password = encodeURIComponent(password);
   return {
     host,
     port: 5432,
-    database: "cpl_command_center",
+    database,
     user,
     password,
     connectionString: url.toString(),
@@ -38,9 +39,11 @@ describe("hosted database transport boundary", () => {
   });
 
   it.each(["web", "worker"] as const)(
-    "accepts the reviewed %s platform endpoint with encoded credentials",
+    "accepts generated %s frontend credentials that differ from origin metadata",
     (purpose) => {
       const selected = binding(purpose);
+      expect(selected.database).not.toBe("cpl_command_center");
+      expect(selected.user).not.toBe(purpose === "web" ? "cpl_web_runtime" : "cpl_worker_runtime");
       const bindings = purpose === "web" ? { CPL_WEB_DB: selected } : { CPL_JOBS_DB: selected };
       expect(hyperdriveConnection(bindings, purpose)).toEqual({
         connectionString: selected.connectionString,
@@ -49,11 +52,10 @@ describe("hosted database transport boundary", () => {
     },
   );
 
-  it("refuses a missing, reversed or mixed-purpose binding rather than using another credential", () => {
+  it("refuses a missing, wrong-name or mixed-purpose binding rather than using another credential", () => {
     for (const bindings of [
       {},
       { CPL_JOBS_DB: binding("worker") },
-      { CPL_WEB_DB: binding("worker") },
       { CPL_WEB_DB: binding(), CPL_JOBS_DB: binding("worker") },
       { CPL_WEB_DB: binding().connectionString },
       { CPL_WEB_DB: null },
@@ -63,6 +65,37 @@ describe("hosted database transport boundary", () => {
       "CPL_HYPERDRIVE_BINDING_REFUSED",
     );
   });
+
+  it("also accepts self-consistent local-development origin fields", () => {
+    const selected = binding();
+    selected.user = "cpl_web_runtime";
+    selected.database = "cpl_command_center";
+    const url = new URL(selected.connectionString);
+    url.username = selected.user;
+    url.pathname = "/" + selected.database;
+    selected.connectionString = url.toString();
+    expect(hyperdriveConnection({ CPL_WEB_DB: selected }, "web").connectionString).toBe(
+      selected.connectionString,
+    );
+  });
+
+  it.each(["user", "database", "password"] as const)(
+    "refuses empty, oversized or control-bearing frontend %s even when the URI agrees",
+    (field) => {
+      for (const value of ["", "x".repeat(1025), "synthetic\u0000value", "synthetic\nvalue"]) {
+        const selected = binding();
+        selected[field] = value;
+        const url = new URL(selected.connectionString);
+        if (field === "user") url.username = encodeURIComponent(value);
+        else if (field === "password") url.password = encodeURIComponent(value);
+        else url.pathname = "/" + encodeURIComponent(value);
+        selected.connectionString = url.toString();
+        expect(() => hyperdriveConnection({ CPL_WEB_DB: selected }, "web")).toThrow(
+          "CPL_HYPERDRIVE_BINDING_REFUSED",
+        );
+      }
+    },
+  );
 
   it.each([
     ["host", "remote.example.test"],
@@ -82,10 +115,10 @@ describe("hosted database transport boundary", () => {
 
   it.each([
     (url: string) => url.replace("postgresql:", "https:"),
-    (url: string) => url.replace("cpl_web_runtime:", "cpl_worker_runtime:"),
+    (url: string) => url.replace("1".repeat(32) + ":", "2".repeat(32) + ":"),
     (url: string) => url.replace("a".repeat(32), "b".repeat(32)),
     (url: string) => url.replace(":5432/", ":5433/"),
-    (url: string) => url.replace("/cpl_command_center?", "/other_database?"),
+    (url: string) => url.replace("/" + "3".repeat(32) + "?", "/other_database?"),
     (url: string) => url.replace("sslmode=disable", "sslmode=require"),
     (url: string) => url + "&sslmode=disable",
     (url: string) => url + "&options=-c%20role%3Dpostgres",
