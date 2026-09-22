@@ -485,6 +485,7 @@
 | `packages/database/src/guided-demo-repository.ts`                                           | Reviewed source publication |
 | `packages/database/src/guided-demo-seed.ts`                                                 | Reviewed source publication |
 | `packages/database/src/hosted-auth-store.ts`                                                | Reviewed source publication |
+| `packages/database/src/hosted-connection.ts`                                                | Reviewed source publication |
 | `packages/database/src/hosted-database-role.ts`                                             | Reviewed source publication |
 | `packages/database/src/hosted-workflow.ts`                                                  | Reviewed source publication |
 | `packages/database/src/hosted.ts`                                                           | Reviewed source publication |
@@ -852,6 +853,8 @@
 | `tests/unit/cpl-google-oidc.test.ts`                                                        | Reviewed source publication |
 | `tests/unit/cpl-hosted-auth-routes.test.ts`                                                 | Reviewed source publication |
 | `tests/unit/cpl-hosted-authentication.test.ts`                                              | Reviewed source publication |
+| `tests/unit/cpl-hosted-connection.test.ts`                                                  | Reviewed source publication |
+| `tests/unit/cpl-hosted-hyperdrive-runtime.test.ts`                                          | Reviewed source publication |
 | `tests/unit/cpl-hosted-runtime.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-runtime-policy.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-webpack-filesystem.test.ts`                                                 | Reviewed source publication |

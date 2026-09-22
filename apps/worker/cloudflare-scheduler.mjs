@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  hostedDatabaseTransport,
+  hyperdriveConnection,
+  hyperdriveTimeoutIntent,
+  withHyperdriveDeadlines,
+} from "../../packages/database/src/hosted-connection.ts";
 import { PgSqlDatabaseAdapter } from "../../packages/database/src/pg-sql-adapter.ts";
 import { processHostedJobs } from "../../packages/database/src/hosted-workflow.ts";
 
@@ -40,22 +46,31 @@ export function createHostedScheduledHandler({
   logger = console,
 } = {}) {
   return async function scheduled(_controller, environment) {
-    const connectionString = workerDatabaseConnectionString(environment.CPL_WORKER_DATABASE_URL);
+    const transport = hostedDatabaseTransport(environment.CPL_DATABASE_TRANSPORT);
+    const connection =
+      transport === "hyperdrive"
+        ? hyperdriveConnection(environment, "worker")
+        : {
+            connectionString: workerDatabaseConnectionString(environment.CPL_WORKER_DATABASE_URL),
+            ssl: { rejectUnauthorized: true },
+          };
     let database;
     let result;
     let failure;
     try {
       database = createDatabase({
-        connectionString,
-        ssl: { rejectUnauthorized: true },
+        ...connection,
         max: 1,
         connectionTimeoutMillis: 5_000,
         query_timeout: 5_000,
         statement_timeout: 4_000,
         idleTimeoutMillis: 1_000,
         allowExitOnIdle: true,
+        ...(transport === "hyperdrive" ? hyperdriveTimeoutIntent("worker") : {}),
       });
-      result = await processJobs(database, {
+      const jobDatabase =
+        transport === "hyperdrive" ? withHyperdriveDeadlines(database, "worker") : database;
+      result = await processJobs(jobDatabase, {
         claimOwner: `cloudflare:${claimId()}`,
         limit: HOSTED_JOB_LIMIT,
       });

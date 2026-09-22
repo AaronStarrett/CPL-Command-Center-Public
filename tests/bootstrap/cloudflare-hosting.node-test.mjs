@@ -120,31 +120,179 @@ test("OpenNext cannot silently compile local environment files into its Worker b
   assert.equal(bundledEnvironmentFile(".dev.vars", "preview"), false);
 });
 
-test("hosting configurations require no paid storage and keep scheduler off HTTP", () => {
+// Resource identifiers were verified against the approved Hyperdrive readback.
+// They identify capabilities; origin credentials remain outside source control.
+const approvedHyperdriveBindings = {
+  web: { binding: "CPL_WEB_DB", id: "0e8dc3085db3408eaed23ab12e7a3c7e" },
+  jobs: { binding: "CPL_JOBS_DB", id: "aae79b27dcfd4586943400d1ab0084eb" },
+};
+function hostingConfiguration(target) {
+  const file =
+    target === "web" ? "../../apps/web/wrangler.jsonc" : "../../apps/worker/wrangler.jsonc";
   // These data-only JSONC files use Prettier's trailing commas, without comments.
-  const configuration = (file) =>
-    JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8").replace(/,\s*(?=[}\]])/gu, ""));
-  const web = configuration("../../apps/web/wrangler.jsonc");
-  const jobs = configuration("../../apps/worker/wrangler.jsonc");
-  assert.equal(web.main, "cloudflare-worker.mjs");
-  assert.deepEqual(web.alias, {
-    "next/server": "./lib/cloudflare-next-response.mjs",
-    "server-only": "next/dist/compiled/server-only/empty.js",
+  return JSON.parse(
+    readFileSync(new URL(file, import.meta.url), "utf8").replace(/,\s*(?=[}\]])/gu, ""),
+  );
+}
+function assertHostingConfiguration(configuration, target) {
+  assert.ok(Object.hasOwn(approvedHyperdriveBindings, target));
+  assert.equal(
+    configuration.name,
+    target === "web" ? "cpl-command-center" : "cpl-command-center-jobs",
+  );
+  assert.equal(configuration.main, "cloudflare-worker.mjs");
+  assert.equal(configuration.compatibility_date, "2026-09-21");
+  assert.deepEqual(configuration.compatibility_flags, [
+    "nodejs_compat",
+    "global_fetch_strictly_public",
+  ]);
+  for (const binding of [
+    "r2_buckets",
+    "kv_namespaces",
+    "d1_databases",
+    "durable_objects",
+    "queues",
+    "images",
+  ])
+    assert.equal(configuration[binding], undefined);
+  assert.deepEqual(configuration.hyperdrive, [approvedHyperdriveBindings[target]]);
+  assert.equal(configuration.preview_urls, false);
+  assert.equal(configuration.workers_dev, target === "web");
+  assert.deepEqual(configuration.observability, { enabled: true, head_sampling_rate: 1 });
+  assert.deepEqual(configuration.vars, {
+    ...(target === "web"
+      ? {
+          APP_MODE: "production",
+          BEA_RUNTIME_MODE: "production",
+          BEA_DISABLE_ENV_FILE: "true",
+          NODE_ENV: "production",
+          APP_BASE_URL: "https://cpl-command-center.astarrett.workers.dev",
+          CPL_HOSTING_ADAPTER: "cloudflare-opennext",
+          CPL_HOSTED_ENABLED: "true",
+        }
+      : {}),
+    CPL_DATABASE_TRANSPORT: "hyperdrive",
+    CPL_PUBLIC_COMMIT: "UNPUBLISHED",
   });
-  for (const configuration of [web, jobs]) {
-    for (const binding of [
-      "r2_buckets",
-      "kv_namespaces",
-      "d1_databases",
-      "durable_objects",
-      "queues",
-      "images",
-      "hyperdrive",
-    ])
-      assert.equal(configuration[binding], undefined);
-    assert.equal(configuration.preview_urls, false);
-    assert.equal(configuration.vars.CPL_PUBLIC_COMMIT, "UNPUBLISHED");
+  if (target === "web") {
+    assert.deepEqual(configuration.alias, {
+      "next/server": "./lib/cloudflare-next-response.mjs",
+      "server-only": "next/dist/compiled/server-only/empty.js",
+    });
+    assert.deepEqual(configuration.assets, { directory: ".open-next/assets", binding: "ASSETS" });
+    assert.equal(configuration.triggers, undefined);
+  } else {
+    assert.deepEqual(configuration.triggers, { crons: ["*/15 * * * *"] });
+    assert.equal(configuration.assets, undefined);
   }
-  assert.equal(jobs.workers_dev, false);
-  assert.deepEqual(jobs.triggers.crons, ["*/15 * * * *"]);
+}
+test("hosting configurations select the approved Hyperdrive roles and preserve storage/routing restrictions", () => {
+  assert.notEqual(approvedHyperdriveBindings.web.id, approvedHyperdriveBindings.jobs.id);
+  for (const target of ["web", "jobs"])
+    assertHostingConfiguration(hostingConfiguration(target), target);
+});
+
+for (const target of ["web", "jobs"]) {
+  const other = target === "web" ? "jobs" : "web";
+  for (const [label, mutate] of [
+    [
+      "missing Hyperdrive binding",
+      (configuration) => {
+        delete configuration.hyperdrive;
+      },
+    ],
+    [
+      "duplicate Hyperdrive binding",
+      (configuration) => {
+        configuration.hyperdrive.push({ ...configuration.hyperdrive[0] });
+      },
+    ],
+    [
+      "swapped role binding",
+      (configuration) => {
+        configuration.hyperdrive = [{ ...approvedHyperdriveBindings[other] }];
+      },
+    ],
+    [
+      "unknown resource ID",
+      (configuration) => {
+        configuration.hyperdrive[0].id = "f".repeat(32);
+      },
+    ],
+    [
+      "wrong resource ID type",
+      (configuration) => {
+        configuration.hyperdrive[0].id = 123;
+      },
+    ],
+    [
+      "unknown extra binding",
+      (configuration) => {
+        configuration.hyperdrive.push({ binding: "OTHER_DB", id: "f".repeat(32) });
+      },
+    ],
+    [
+      "local origin override",
+      (configuration) => {
+        configuration.hyperdrive[0].localConnectionString = "synthetic-local-endpoint";
+      },
+    ],
+    [
+      "missing transport selector",
+      (configuration) => {
+        delete configuration.vars.CPL_DATABASE_TRANSPORT;
+      },
+    ],
+    [
+      "direct transport selector",
+      (configuration) => {
+        configuration.vars.CPL_DATABASE_TRANSPORT = "direct";
+      },
+    ],
+    [
+      "wrong selector type",
+      (configuration) => {
+        configuration.vars.CPL_DATABASE_TRANSPORT = true;
+      },
+    ],
+    [
+      "unapproved storage",
+      (configuration) => {
+        configuration.r2_buckets = [];
+      },
+    ],
+    [
+      "preview URLs",
+      (configuration) => {
+        configuration.preview_urls = true;
+      },
+    ],
+    [
+      "unpublished commit override",
+      (configuration) => {
+        configuration.vars.CPL_PUBLIC_COMMIT = published.commit;
+      },
+    ],
+    [
+      "plaintext database credential",
+      (configuration) => {
+        configuration.vars.DATABASE_URL = "synthetic-private";
+      },
+    ],
+  ])
+    test(`${target} configuration rejects ${label}`, () => {
+      const configuration = hostingConfiguration(target);
+      mutate(configuration);
+      assert.throws(() => assertHostingConfiguration(configuration, target));
+    });
+}
+test("Hyperdrive activation retains the exact jobs cron and disabled jobs HTTP", () => {
+  for (const change of [
+    { workers_dev: true },
+    { triggers: { crons: ["*/5 * * * *"] } },
+    { triggers: { crons: ["*/15 * * * *", "*/15 * * * *"] } },
+  ])
+    assert.throws(() =>
+      assertHostingConfiguration({ ...hostingConfiguration("jobs"), ...change }, "jobs"),
+    );
 });

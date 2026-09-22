@@ -13,7 +13,9 @@
     "enabled": true,
     "head_sampling_rate": 1,
   },
+  "hyperdrive": [{ "binding": "CPL_JOBS_DB", "id": "aae79b27dcfd4586943400d1ab0084eb" }],
   "vars": {
+    "CPL_DATABASE_TRANSPORT": "hyperdrive",
     "CPL_PUBLIC_COMMIT": "UNPUBLISHED",
   },
 }

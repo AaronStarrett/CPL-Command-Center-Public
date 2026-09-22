@@ -43,6 +43,7 @@ const messages: Record<string, string> = {
     "Sign-in is awaiting deployment configuration. Please contact the workspace owner.",
   CPL_ACCESS_DENIED: "Your session or permission could not be verified. Sign in again to continue.",
   CPL_AUTHENTICATION_REQUIRED: "Your session expired. Sign in again to continue.",
+  CPL_CSRF_REJECTED: "Your sign-in state changed. Refresh and try again.",
   CPL_PLATFORM_MFA_REQUIRED: "Verify your passkey before changing organization settings.",
   CPL_PROPOSAL_VERSION_CONFLICT:
     "This draft changed in another session. Refresh before editing again.",
@@ -64,6 +65,30 @@ class WorkspaceRequestError extends Error {
   ) {
     super(message);
   }
+}
+
+async function workspaceRequest<T>(
+  path: string,
+  body?: unknown,
+  mutationHeaders?: Record<string, string>,
+): Promise<T> {
+  const response = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: body === undefined ? undefined : mutationHeaders,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const value = await response.json();
+  if (!response.ok)
+    throw new WorkspaceRequestError(
+      typeof value.code === "string" ? value.code : "CPL_REQUEST_FAILED",
+      messages[value.code] ??
+        (response.status === 503
+          ? "The workspace is temporarily unavailable. Try again shortly."
+          : "The request could not be completed. Refresh and try again."),
+    );
+  return value as T;
 }
 
 export function Workspace() {
@@ -101,39 +126,20 @@ export function Workspace() {
   }, []);
 
   const request = useCallback(
-    async <T,>(path: string, body?: unknown): Promise<T> => {
-      const response = await fetch(path, {
-        method: body === undefined ? "GET" : "POST",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers:
-          body === undefined
-            ? undefined
-            : {
-                "Content-Type": "application/json",
-                "X-CPL-CSRF": session?.csrfToken ?? "",
-                "X-CPL-Organization": data.currentOrganizationId ?? "",
-              },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      const value = await response.json();
-      if (!response.ok)
-        throw new WorkspaceRequestError(
-          typeof value.code === "string" ? value.code : "CPL_REQUEST_FAILED",
-          messages[value.code] ??
-            (response.status === 503
-              ? "The workspace is temporarily unavailable. Try again shortly."
-              : "The request could not be completed. Refresh and try again."),
-        );
-      return value as T;
-    },
+    <T,>(path: string, body?: unknown): Promise<T> =>
+      workspaceRequest<T>(path, body, {
+        "Content-Type": "application/json",
+        "X-CPL-CSRF": session?.csrfToken ?? "",
+        "X-CPL-Organization": data.currentOrganizationId ?? "",
+      }),
     [session?.csrfToken, data.currentOrganizationId],
   );
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
-    const signedIn = await request<Session>("/api/auth/session");
+    // Reads do not depend on mutation headers; loading them must not restart this effect.
+    const signedIn = await workspaceRequest<Session>("/api/auth/session");
     const workspace = signedIn.authenticated
-      ? await request<WorkspaceData>("/api/cpl/workspace")
+      ? await workspaceRequest<WorkspaceData>("/api/cpl/workspace")
       : emptyData;
     if (generation === refreshGeneration.current) {
       if (workspace.currentOrganizationId !== displayedOrganization.current) resetRecords();
@@ -141,7 +147,7 @@ export function Workspace() {
       setSession(signedIn);
       setData(workspace);
     }
-  }, [request, resetRecords]);
+  }, [resetRecords]);
   useEffect(() => {
     let active = true;
     void Promise.resolve()
@@ -162,6 +168,14 @@ export function Workspace() {
     createAttempts.current[kind] = { payload, key };
     return key;
   }
+  function clearSession() {
+    setSession({ authenticated: false });
+    setData(emptyData);
+    displayedOrganization.current = null;
+    resetRecords();
+    setCreateOrganization(false);
+    setView("leads");
+  }
   async function action(operation: () => Promise<void>) {
     if (busy) return;
     refreshGeneration.current++;
@@ -174,6 +188,18 @@ export function Workspace() {
       if (e instanceof WorkspaceRequestError && e.code === "CPL_ORGANIZATION_CONTEXT_CHANGED") {
         resetRecords();
         await refresh().catch(() => undefined);
+      }
+      if (
+        e instanceof WorkspaceRequestError &&
+        ["CPL_CSRF_REJECTED", "CPL_AUTHENTICATION_REQUIRED"].includes(e.code)
+      ) {
+        // A denial may mean expired cookies. Check once without retrying the mutation.
+        const current = await workspaceRequest<Session>("/api/auth/session").catch(() => null);
+        if (current?.authenticated === false) {
+          clearSession();
+          setError(messages.CPL_AUTHENTICATION_REQUIRED!);
+          return;
+        }
       }
       setError(e instanceof Error ? e.message : "The request could not be completed.");
     } finally {
@@ -290,11 +316,7 @@ export function Workspace() {
             onClick={() =>
               void action(async () => {
                 await request("/api/auth/logout", {});
-                setSession({ authenticated: false });
-                setData(emptyData);
-                resetRecords();
-                setCreateOrganization(false);
-                setView("leads");
+                clearSession();
               })
             }
           >

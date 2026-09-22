@@ -1,0 +1,191 @@
+import type { DatabaseHealth } from "@bea/domain";
+import type { DatabaseAdapter, DatabaseResult, SqlExecutor } from "./adapter.js";
+
+export type HostedDatabaseTransport = "direct" | "hyperdrive";
+export type HostedDatabasePurpose = "web" | "worker";
+
+export interface HostedDatabaseBindings {
+  readonly CPL_WEB_DB?: unknown;
+  readonly CPL_JOBS_DB?: unknown;
+}
+
+/** Existing direct installations remain explicit TLS connections. An invalid
+ * selector, or a missing selected binding, never falls back to another transport. */
+export function hostedDatabaseTransport(value: string | undefined): HostedDatabaseTransport {
+  if (value === undefined || value === "direct") return "direct";
+  if (value === "hyperdrive") return "hyperdrive";
+  throw new Error("CPL_DATABASE_TRANSPORT_REFUSED");
+}
+
+/** Accept only an invocation-owned platform binding, never request JSON or an
+ * arbitrary connection URL. The pinned workerd binding routes this local host
+ * through a capability; origin TLS belongs to the separately verified resource.
+ * See workerd v1.20260921.1 src/workerd/api/hyperdrive.c++.
+ */
+export function hyperdriveConnection(
+  bindings: HostedDatabaseBindings,
+  purpose: HostedDatabasePurpose,
+): { readonly connectionString: string; readonly ssl: false } {
+  try {
+    if (purpose !== "web" && purpose !== "worker") throw new Error();
+    const name = purpose === "web" ? "CPL_WEB_DB" : "CPL_JOBS_DB";
+    const other = purpose === "web" ? "CPL_JOBS_DB" : "CPL_WEB_DB";
+    if (!bindings || bindings[other] !== undefined) throw new Error();
+    const binding = bindings[name];
+    if (!binding || typeof binding !== "object" || Array.isArray(binding)) throw new Error();
+    const { connectionString, host, port, database, user, password } = binding as Record<
+      string,
+      unknown
+    >;
+    const expectedUser = purpose === "web" ? "cpl_web_runtime" : "cpl_worker_runtime";
+    if (
+      typeof connectionString !== "string" ||
+      connectionString.length > 8192 ||
+      connectionString.trim() !== connectionString ||
+      typeof host !== "string" ||
+      !/^[a-f0-9]{32}\.hyperdrive\.local$/u.test(host) ||
+      port !== 5432 ||
+      database !== "cpl_command_center" ||
+      user !== expectedUser ||
+      typeof password !== "string" ||
+      password.length === 0
+    )
+      throw new Error();
+    const parsed = new URL(connectionString);
+    if (
+      !["postgres:", "postgresql:"].includes(parsed.protocol) ||
+      parsed.hostname !== host ||
+      parsed.port !== "5432" ||
+      decodeURIComponent(parsed.pathname.slice(1)) !== database ||
+      decodeURIComponent(parsed.username) !== expectedUser ||
+      decodeURIComponent(parsed.password) !== password ||
+      parsed.hash ||
+      [...parsed.searchParams].length !== 1 ||
+      parsed.searchParams.get("sslmode") !== "disable"
+    )
+      throw new Error();
+    return { connectionString, ssl: false };
+  } catch {
+    throw new Error("CPL_HYPERDRIVE_BINDING_REFUSED");
+  }
+}
+
+export function hyperdriveTimeoutIntent(purpose: HostedDatabasePurpose) {
+  if (purpose !== "web" && purpose !== "worker") throw new Error("CPL_HYPERDRIVE_BINDING_REFUSED");
+  const milliseconds = purpose === "web" ? 15_000 : 4_000;
+  return {
+    statement_timeout: milliseconds,
+    idle_in_transaction_session_timeout: milliseconds,
+    options: `-c statement_timeout=${milliseconds} -c idle_in_transaction_session_timeout=${milliseconds}`,
+  };
+}
+
+/** Hyperdrive can choose a different origin connection after every transaction.
+ * Enforce deadlines on the same transaction as the work, independent of startup
+ * parameter forwarding. One setup statement is added to each transaction;
+ * standalone query/execute also gain BEGIN/COMMIT. No tenant state is retained.
+ * The underlying adapter still owns rollback, failed-connection disposal and end.
+ */
+export function withHyperdriveDeadlines(
+  database: DatabaseAdapter,
+  purpose: HostedDatabasePurpose,
+): DatabaseAdapter {
+  if (database.kind !== "postgres") throw new Error("CPL_HOSTED_POSTGRES_REQUIRED");
+  const deadlines = hyperdriveTimeoutIntent(purpose);
+  const milliseconds = deadlines.statement_timeout;
+  const transaction = <T>(operation: (executor: SqlExecutor) => Promise<T>): Promise<T> =>
+    database.transaction(async (executor) => {
+      try {
+        const result = await executor.query<{
+          statement_timeout_ms: number;
+          idle_timeout_ms: number;
+        }>(
+          `SELECT (extract(epoch FROM set_config('statement_timeout',$1,true)::interval)*1000)::integer AS statement_timeout_ms,
+            (extract(epoch FROM set_config('idle_in_transaction_session_timeout',$2,true)::interval)*1000)::integer AS idle_timeout_ms`,
+          [`${milliseconds}ms`, `${deadlines.idle_in_transaction_session_timeout}ms`],
+        );
+        if (
+          result.rows.length !== 1 ||
+          result.rows[0]?.statement_timeout_ms !== milliseconds ||
+          result.rows[0]?.idle_timeout_ms !== deadlines.idle_in_transaction_session_timeout
+        )
+          throw new Error();
+      } catch {
+        throw new Error("CPL_HYPERDRIVE_SERVER_DEADLINES_REFUSED");
+      }
+      return operation(executor);
+    });
+  const guarded: DatabaseAdapter = {
+    kind: "postgres",
+    transaction,
+    query<Row extends Record<string, unknown>>(
+      sql: string,
+      parameters?: readonly unknown[],
+    ): Promise<DatabaseResult<Row>> {
+      return transaction((executor) => executor.query<Row>(sql, parameters));
+    },
+    execute(sql: string): Promise<void> {
+      return transaction((executor) => executor.execute(sql));
+    },
+    async health(): Promise<DatabaseHealth> {
+      const startedAt = performance.now();
+      const checkedAt = new Date().toISOString();
+      try {
+        await guarded.query("SELECT 1 AS healthy");
+        return {
+          status: "healthy",
+          adapter: "postgres",
+          checkedAt,
+          latencyMs: Number((performance.now() - startedAt).toFixed(2)),
+        };
+      } catch {
+        return {
+          status: "unhealthy",
+          adapter: "postgres",
+          checkedAt,
+          latencyMs: Number((performance.now() - startedAt).toFixed(2)),
+          detail: "PostgreSQL health query failed.",
+        };
+      }
+    },
+    close: () => database.close(),
+  };
+  return guarded;
+}
+
+/** Refuse disabled/weaker server deadlines before application work. This is an
+ * invocation preflight, not evidence that all pooled transactions retain startup
+ * options: deployment acceptance must also test cancellation and pool reuse.
+ * Client query_timeout alone cannot establish a PostgreSQL server deadline. */
+export async function verifyHyperdriveServerDeadlines(
+  database: SqlExecutor,
+  purpose: HostedDatabasePurpose,
+): Promise<void> {
+  try {
+    const required = hyperdriveTimeoutIntent(purpose);
+    const result = await database.query<{
+      name: string;
+      setting: string;
+      unit: string;
+    }>(
+      "SELECT name,setting,unit FROM pg_settings WHERE name IN ('statement_timeout','idle_in_transaction_session_timeout')",
+    );
+    if (result.rows.length !== 2) throw new Error();
+    for (const name of ["statement_timeout", "idle_in_transaction_session_timeout"] as const) {
+      const rows = result.rows.filter((row) => row.name === name);
+      const row = rows[0];
+      if (
+        rows.length !== 1 ||
+        !row ||
+        row.unit !== "ms" ||
+        typeof row.setting !== "string" ||
+        !/^[1-9][0-9]*$/u.test(row.setting) ||
+        !Number.isSafeInteger(Number(row.setting)) ||
+        Number(row.setting) > required[name]
+      )
+        throw new Error();
+    }
+  } catch {
+    throw new Error("CPL_HYPERDRIVE_SERVER_DEADLINES_REFUSED");
+  }
+}

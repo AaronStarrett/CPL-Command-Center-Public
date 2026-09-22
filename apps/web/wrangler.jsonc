@@ -18,6 +18,7 @@
     "enabled": true,
     "head_sampling_rate": 1,
   },
+  "hyperdrive": [{ "binding": "CPL_WEB_DB", "id": "0e8dc3085db3408eaed23ab12e7a3c7e" }],
   "vars": {
     "APP_MODE": "production",
     "BEA_RUNTIME_MODE": "production",
@@ -26,6 +27,7 @@
     "APP_BASE_URL": "https://cpl-command-center.astarrett.workers.dev",
     "CPL_HOSTING_ADAPTER": "cloudflare-opennext",
     "CPL_HOSTED_ENABLED": "true",
+    "CPL_DATABASE_TRANSPORT": "hyperdrive",
     "CPL_PUBLIC_COMMIT": "UNPUBLISHED",
   },
 }

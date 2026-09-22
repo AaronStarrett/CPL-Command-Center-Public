@@ -23,6 +23,7 @@ function json(value: unknown, status = 200) {
 describe("hosted workspace organization and edit safety", () => {
   let selected = orgA;
   let signedIn = true;
+  let csrfToken = "csrf-test-only";
   let version = 1;
   const fetchMock = vi.fn<typeof fetch>();
   function workspace() {
@@ -74,7 +75,7 @@ describe("hosted workspace organization and edit safety", () => {
                 displayName: "Fictional Owner",
                 email: "owner@example.invalid",
               },
-              csrfToken: "csrf-test-only",
+              csrfToken,
               session: {
                 expiresAt: "2026-09-21T23:00:00Z",
                 currentOrganizationId: selected,
@@ -100,6 +101,7 @@ describe("hosted workspace organization and edit safety", () => {
   beforeEach(() => {
     selected = orgA;
     signedIn = true;
+    csrfToken = "csrf-test-only";
     version = 1;
     fetchMock.mockReset().mockImplementation(normalFetch);
     vi.stubGlobal("fetch", fetchMock);
@@ -113,6 +115,106 @@ describe("hosted workspace organization and edit safety", () => {
     await screen.findByRole("heading", { name: "Fictional Alpha" });
     await waitFor(() => expect(screen.getByRole("button", { name: "Save lead" })).toBeEnabled());
   }
+
+  it("loads one initial GET pair and keeps current mutation headers after switching organizations", async () => {
+    await open();
+    const reads = (path: string) => fetchMock.mock.calls.filter(([url]) => String(url) === path);
+    expect(reads("/api/auth/session")).toHaveLength(1);
+    expect(reads("/api/cpl/workspace")).toHaveLength(1);
+    csrfToken = "rotated-csrf-test-only";
+    fireEvent.change(screen.getByLabelText("Organization", { exact: true }), {
+      target: { value: orgB },
+    });
+    await screen.findByRole("heading", { name: "Fictional Beta" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save lead" })).toBeEnabled());
+    expect(reads("/api/auth/session")).toHaveLength(2);
+    expect(reads("/api/cpl/workspace")).toHaveLength(2);
+    for (const [, init] of [...reads("/api/auth/session"), ...reads("/api/cpl/workspace")])
+      expect(init).toEqual(
+        expect.objectContaining({
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: undefined,
+        }),
+      );
+    fireEvent.change(screen.getByLabelText("Lead title"), { target: { value: "Beta inquiry" } });
+    fireEvent.change(screen.getByLabelText("Contact name"), { target: { value: "Example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save lead" }));
+    await screen.findByText("Lead saved to your organization.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cpl/leads",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CPL-CSRF": "rotated-csrf-test-only",
+          "X-CPL-Organization": orgB,
+        },
+      }),
+    );
+  });
+
+  it.each([
+    ["CPL_CSRF_REJECTED", 403],
+    ["CPL_AUTHENTICATION_REQUIRED", 401],
+  ])(
+    "shows sign-in after %s only when the session check confirms it ended",
+    async (code, status) => {
+      await open();
+      fetchMock.mockImplementation(async (input, init) => {
+        if (String(input) === "/api/auth/logout") {
+          signedIn = false;
+          return json({ ok: false, code }, status);
+        }
+        return normalFetch(input, init);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Continue with Google" });
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Your session expired. Sign in again to continue.",
+      );
+      expect(screen.queryByRole("heading", { name: "Fictional Alpha" })).not.toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/auth/logout"),
+      ).toHaveLength(1);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/auth/session"),
+      ).toHaveLength(2);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/cpl/workspace"),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each(["authenticated", "unavailable"])(
+    "does not treat rejected logout as success when the session is %s",
+    async (state) => {
+      await open();
+      fetchMock.mockImplementation(async (input, init) => {
+        if (String(input) === "/api/auth/logout")
+          return json({ ok: false, code: "CPL_CSRF_REJECTED" }, 403);
+        if (String(input) === "/api/auth/session" && state === "unavailable")
+          return json({ ok: false, code: "CPL_HOSTED_AUTH_UNAVAILABLE" }, 503);
+        return normalFetch(input, init);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Your sign-in state changed. Refresh and try again.",
+      );
+      expect(screen.getByRole("heading", { name: "Fictional Alpha" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Continue with Google" }),
+      ).not.toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/auth/logout"),
+      ).toHaveLength(1);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === "/api/auth/session"),
+      ).toHaveLength(2);
+    },
+  );
 
   it("clears unsaved lead and proposal content when the displayed organization changes", async () => {
     await open();
@@ -197,14 +299,19 @@ describe("hosted workspace organization and edit safety", () => {
     let workspaceReads = 0;
     const staleWorkspace = workspace();
     fetchMock.mockImplementation(async (input, init) => {
-      if (String(input) === "/api/cpl/workspace" && ++workspaceReads > 1)
+      if (String(input) === "/api/cpl/workspace" && ++workspaceReads === 1)
         return new Promise<Response>((resolve) => {
           release = resolve;
         });
       return normalFetch(input, init);
     });
-    await open();
-    // Session/CSRF synchronization performs a background refresh without locking actions.
+    // Strict Mode overlaps initial reads; the older response must not undo logout.
+    render(
+      <React.StrictMode>
+        <Workspace />
+      </React.StrictMode>,
+    );
+    await screen.findByRole("heading", { name: "Fictional Alpha" });
     await waitFor(() => expect(release).toBeDefined());
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await screen.findByRole("button", { name: "Continue with Google" });
