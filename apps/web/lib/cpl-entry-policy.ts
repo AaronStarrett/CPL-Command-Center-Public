@@ -4,22 +4,71 @@ export function cplEntryDecision(
   method: string,
   nodeEnv: string | undefined,
   hostedEnabled = false,
+  localDevelopment = false,
 ) {
   if (nodeEnv === "test") return "allow" as const;
   // Capability allowlist only. These routes independently validate provider
   // configuration, sessions, CSRF, membership and tenant-scoped SQL privileges.
-  if (hostedEnabled) {
+  if (hostedEnabled || localDevelopment) {
     if ((method === "GET" || method === "HEAD") && ["/", "/setup", "/sign-in"].includes(pathname))
       return "workspace" as const;
     if ((method === "GET" || method === "HEAD") && pathname === "/workspace")
       return "allow" as const;
     if (
-      /^\/api\/cpl\/(?:workspace|organizations(?:\/select)?|leads(?:\/[0-9a-f-]+)?|proposals(?:\/[0-9a-f-]+(?:\/download)?)?|jobs)$/u.test(
+      /^\/api\/cpl\/(?:workspace|directory|organizations(?:\/select)?|leads(?:\/[0-9a-f-]+(?:\/evidence)?)?|proposals(?:\/[0-9a-f-]+(?:\/download)?)?|jobs)$/u.test(
         pathname,
       )
     )
       return "allow" as const;
     if (
+      /^\/api\/cpl-commercial\/(?:workspace|templates|branding|projects\/[0-9a-f-]+|proposals(?:\/[0-9a-f-]+(?:\/(?:save|submit|review|revise|outcome|project|project-preview|customer-preview|pdf))?)?)$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      /^\/api\/cpl-execution\/(?:agenda|projects\/[0-9a-f-]+(?:\/visits(?:\/[0-9a-f-]+)?)?|visits\/[0-9a-f-]+)$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      /^\/api\/cpl-field\/(?:templates|projects\/[0-9a-f-]+\/visits\/[0-9a-f-]+(?:\/(?:template|checklist|observations|reopen|photos(?:\/[0-9a-f-]+(?:\/(?:file|retry))?)?))?)$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      /^\/api\/cpl-reports\/(?:templates|branding|projects\/[0-9a-f-]+(?:\/reports(?:\/[0-9a-f-]+(?:\/(?:save|sources|submit|review|revise|approve|preview|pdf))?)?)?)$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      /^\/api\/cpl-automation\/(?:workspace|recipes|tasks\/[0-9a-f-]+|executions\/[0-9a-f-]+(?:\/(?:retry|cancel))?|events\/[0-9a-f-]+\/replay)$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      /^\/api\/cpl-delivery\/projects\/[0-9a-f-]+(?:\/(?:policy|closeout|override|billing-handoff|reports\/[0-9a-f-]+\/withdraw|packages(?:\/[0-9a-f-]+(?:\/(?:save|revise|ready|export|record-sent|acknowledge|manifest|message|attachments\/[0-9a-f-]+))?)?))?$/u.test(
+        pathname,
+      )
+    )
+      return "allow" as const;
+    if (
+      localDevelopment &&
+      [
+        "/api/auth/local/sign-in",
+        "/api/auth/local/status",
+        "/api/auth/session",
+        "/api/auth/renew",
+        "/api/auth/logout",
+      ].includes(pathname)
+    )
+      return "allow" as const;
+    if (
+      !localDevelopment &&
       [
         "/api/auth/google/start",
         "/api/auth/google/callback",

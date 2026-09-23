@@ -69,8 +69,8 @@ beforeAll(async () => {
   database = new PGliteDatabaseAdapter();
   // Register and apply the complete migration chain without any business or identity seed.
   const migration = await migrateDatabase(database);
-  expect(migration.applied.at(-1)).toBe("0026_cpl_hosted_workflow.sql");
-  expect((await verifyMigrations(database)).current).toBe("0026_cpl_hosted_workflow.sql");
+  expect(migration.applied.at(-1)).toBe("0035_cpl_delivery_closeout.sql");
+  expect((await verifyMigrations(database)).current).toBe("0035_cpl_delivery_closeout.sql");
   repository = new SqlCplTenantRepository(database, {
     identityVerifier: verifier,
     trustedIssuers: [ISSUER],

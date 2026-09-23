@@ -13,6 +13,26 @@
     "./brand": {
       "types": "./src/brand.ts",
       "default": "./src/brand.ts"
+    },
+    "./proposal-pdf": {
+      "types": "./src/proposal-pdf.ts",
+      "default": "./src/proposal-pdf.ts"
+    },
+    "./cpl-evidence-store": {
+      "types": "./src/cpl-evidence-store.ts",
+      "default": "./src/cpl-evidence-store.ts"
+    },
+    "./cpl-image": {
+      "types": "./src/cpl-image.ts",
+      "default": "./src/cpl-image.ts"
+    },
+    "./cpl-photo-annotations": {
+      "types": "./src/cpl-photo-annotations.ts",
+      "default": "./src/cpl-photo-annotations.ts"
+    },
+    "./cpl-report-pdf": {
+      "types": "./src/cpl-report-pdf.ts",
+      "default": "./src/cpl-report-pdf.ts"
     }
   },
   "scripts": {
@@ -20,6 +40,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "pdf-lib": "1.17.1"
+    "@bea/domain": "workspace:*",
+    "pdf-lib": "1.17.1",
+    "sharp": "0.35.4"
   }
 }

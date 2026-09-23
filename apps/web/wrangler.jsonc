@@ -28,6 +28,10 @@
     "CPL_HOSTING_ADAPTER": "cloudflare-opennext",
     "CPL_HOSTED_ENABLED": "true",
     "CPL_DATABASE_TRANSPORT": "hyperdrive",
+    "CPL_SESSION_READ_TRANSPORT": "neon-http",
+    "CPL_SESSION_HTTP_CONTRACT": "7e798a073c31f3704d81468ec2e0186acc2f8bdd868c76153c55b48cade6b21e",
+    "CPL_NEON_WEB_HOST": "ep-calm-wildflower-b51ccu8u.c-7.us-east-2.aws.neon.tech",
+    "CPL_NEON_WEB_DATABASE": "cpl_command_center",
     "CPL_PUBLIC_COMMIT": "UNPUBLISHED",
   },
 }

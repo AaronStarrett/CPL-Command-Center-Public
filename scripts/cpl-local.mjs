@@ -18,11 +18,22 @@ import { fileURLToPath } from "node:url";
 import { assertRepositoryBoundary, isPathWithin, REPOSITORY_ID } from "./repository-boundary.mjs";
 
 import { synchronizeWorkspaceCopies, inspectWorkspaceCopies } from "./cpl-workspace-copies.mjs";
+import {
+  assertPortAvailable,
+  startDevelopmentDatabase,
+  developmentDatabasePaths,
+} from "./cpl-development-database.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const LOCAL_CACHE_ROOT = "D:\\Cyber Pirate Labs\\93_TOOLS_AND_CACHE\\CPL-Command-Center";
 export const LOCAL_PORT = 3400;
-export const LOCAL_URL = "http://127.0.0.1:" + LOCAL_PORT + "/setup";
+export const LOCAL_URL = "http://127.0.0.1:" + LOCAL_PORT + "/workspace";
+export const VERIFIED_NODE = path.join(
+  LOCAL_CACHE_ROOT,
+  "toolchain",
+  "node-v24.19.0-win-x64",
+  "node.exe",
+);
 const inheritedKeys = [
   "SystemRoot",
   "SYSTEMROOT",
@@ -71,6 +82,10 @@ export function createSafeEnvironment(root, source = process.env) {
   const environment = Object.fromEntries(
     inheritedKeys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
   );
+  // Windows environment keys are case-insensitive. Keep a single canonical Path.
+  delete environment.PATH;
+  environment.Path =
+    path.dirname(VERIFIED_NODE) + path.delimiter + (source.Path ?? source.PATH ?? "");
   return {
     ...environment,
     APP_MODE: "production",
@@ -170,6 +185,7 @@ export async function warmSetupPage({
   progressMs = 10_000,
   signal,
   onProgress = () => {},
+  recognize = (body) => body.includes("CPL Command Center") && body.includes("Workspace setup"),
 } = {}) {
   const started = Date.now();
   const controller = new AbortController();
@@ -202,10 +218,7 @@ export async function warmSetupPage({
             response.on("end", () => {
               if (response.statusCode !== 200) {
                 reject(new Error("SETUP_HTTP_" + response.statusCode));
-              } else if (
-                !body.includes("CPL Command Center") ||
-                !body.includes("Workspace setup")
-              ) {
+              } else if (!recognize(body)) {
                 reject(new Error("SETUP_RESPONSE_NOT_RECOGNIZED"));
               } else resolve();
             });
@@ -253,7 +266,7 @@ function tokenMatches(expected, supplied) {
 
 export function createControlServer({ pipe, token, status, stop }) {
   const server = net.createServer((socket) => {
-    socket.setTimeout(3000, () => socket.destroy());
+    socket.setTimeout(75_000, () => socket.destroy());
     let buffer = "";
     socket.on("error", () => {});
     socket.on("data", async (chunk) => {
@@ -296,7 +309,9 @@ export function requestControl(pipe, request) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(pipe);
     let buffer = "";
-    socket.setTimeout(8000, () => socket.destroy(new Error("Local launcher control timed out.")));
+    socket.setTimeout(request.action === "stop" ? 75_000 : 8000, () =>
+      socket.destroy(new Error("Local launcher control timed out.")),
+    );
     socket.on("connect", () => socket.write(JSON.stringify(request) + "\n"));
     socket.on("error", reject);
     socket.on("data", (chunk) => {
@@ -382,12 +397,109 @@ function stopOwnedChild(child, root) {
   );
 }
 
+export function assertVerifiedToolchain() {
+  if (
+    process.version !== "v24.19.0" ||
+    realpathSync.native(process.execPath).toLowerCase() !== VERIFIED_NODE.toLowerCase()
+  )
+    throw new Error("Use RUN-CPL-COMMAND-CENTER.cmd with the verified SSD Node 24.19.0 toolchain.");
+  const powershell = path.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  let drive;
+  try {
+    drive = JSON.parse(
+      execFileSync(
+        powershell,
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$cplDrive=[IO.DriveInfo]::new('D:'); [pscustomobject]@{ready=$cplDrive.IsReady;label=$cplDrive.VolumeLabel;format=$cplDrive.DriveFormat;free=$cplDrive.AvailableFreeSpace} | ConvertTo-Json -Compress",
+        ],
+        { encoding: "utf8", windowsHide: true, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
+      ),
+    );
+  } catch {
+    throw new Error(
+      "The external SSD could not be verified. Reconnect the Extreme SSD and try again.",
+    );
+  }
+  if (
+    !drive.ready ||
+    drive.label !== "Extreme SSD" ||
+    drive.format !== "exFAT" ||
+    drive.free < 1024 * 1024 * 1024
+  )
+    throw new Error(
+      "The expected Extreme SSD is unavailable or has less than 1 GB free. No fallback drive was used.",
+    );
+}
+
+function openLocalBrowser() {
+  const executable = path.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  try {
+    execFileSync(
+      executable,
+      ["-NoProfile", "-NonInteractive", "-Command", "Start-Process -FilePath '" + LOCAL_URL + "'"],
+      { windowsHide: true, stdio: "ignore", timeout: 15_000 },
+    );
+  } catch {
+    process.stdout.write("The application is ready. Open " + LOCAL_URL + " in your browser.\n");
+  }
+}
+
+async function reuseExistingLauncher(root, paths) {
+  let state;
+  try {
+    state = await requestControl(paths.pipe, { action: "status" });
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED"].includes(error.code)) return false;
+    throw new Error(
+      "An existing launcher could not be verified. Run CPL-Doctor.cmd; no process was stopped.",
+    );
+  }
+  if (
+    !state.ok ||
+    state.root !== root ||
+    state.repositoryId !== REPOSITORY_ID ||
+    state.url !== LOCAL_URL ||
+    state.mode !== "local-development"
+  )
+    throw new Error(
+      "An existing launcher has a different runtime. Stop it with Stop-CPL.cmd before starting development.",
+    );
+  process.stdout.write("CPL Command Center is already running. Waiting for its workspace...\n");
+  const deadline = Date.now() + 300_000;
+  while (state.readiness?.state !== "READY") {
+    if (Date.now() >= deadline)
+      throw new Error("The existing launcher is still starting. Review its progress window.");
+    await delay(2000);
+    state = await requestControl(paths.pipe, { action: "status" });
+  }
+  openLocalBrowser();
+  return true;
+}
+
 export async function startLocal() {
   const root = ensureLocalBoundary();
+  assertVerifiedToolchain();
   const paths = runtimePaths(root);
   assertUnredirected(root, paths.stateFile);
+  if (await reuseExistingLauncher(root, paths)) return;
   const token = randomBytes(32).toString("hex");
   let child;
+  let database;
   let stopping;
   let childClosed;
   const warmupController = new AbortController();
@@ -398,7 +510,8 @@ export async function startLocal() {
     launcherPid: process.pid,
     webPid: child?.pid ?? null,
     url: LOCAL_URL,
-    mode: "provisioning-only",
+    mode: "local-development",
+    database: database?.status() ?? null,
     readiness,
   });
   const stop = () => {
@@ -406,6 +519,7 @@ export async function startLocal() {
       warmupController.abort();
       if (child) stopOwnedChild(child, root);
       await childClosed;
+      await database?.stop();
     })().catch((error) => {
       stopping = undefined;
       throw error;
@@ -442,6 +556,10 @@ export async function startLocal() {
   try {
     // Take the exclusive launcher pipe before mutating copies or build output.
     prepareDirectories(root);
+    await assertPortAvailable(LOCAL_PORT);
+    process.stdout.write(
+      "CPL COMMAND CENTER — DEVELOPMENT\nVerifying SSD toolchain and existing dependencies...\n",
+    );
     synchronizeWorkspaceCopies();
     const dependencies = checkDependencies(root);
     if (!dependencies.ok)
@@ -450,6 +568,14 @@ export async function startLocal() {
           dependencies.missing.join(", ") +
           ". Complete the SSD dependency installation first.",
       );
+    const environment = createSafeEnvironment(root);
+    database = await startDevelopmentDatabase({
+      root,
+      cacheRoot: LOCAL_CACHE_ROOT,
+      environment,
+      onProgress: (message) => process.stdout.write(message + "\n"),
+    });
+    database.startJobs();
     child = spawn(
       process.execPath,
       [
@@ -463,7 +589,13 @@ export async function startLocal() {
       ],
       {
         cwd: path.join(root, "apps", "web"),
-        env: createSafeEnvironment(root),
+        env: {
+          ...environment,
+          CPL_LOCAL_DEVELOPMENT_AUTH: "true",
+          CPL_HOSTED_ENABLED: "false",
+          CPL_LOCAL_DATABASE_URL: database.webUrl,
+          CPL_LOCAL_SESSION_SECRET: randomBytes(32).toString("base64url"),
+        },
         stdio: "inherit",
         windowsHide: true,
       },
@@ -480,37 +612,63 @@ export async function startLocal() {
     process.on("SIGINT", onSignal);
     process.on("SIGTERM", onSignal);
     process.stdout.write(
-      "Starting CPL provisioning at " +
+      "Starting the development workspace at " +
         LOCAL_URL +
-        ". Waiting for the setup page to compile. Stop with Ctrl+C or Stop-CPL.cmd.\n",
+        ". First compilation can take a few minutes. Stop with STOP-CPL-COMMAND-CENTER.cmd.\n",
     );
-    const warmed = warmSetupPage({
-      signal: warmupController.signal,
-      onProgress: (progress) => {
-        readiness = progress;
-        process.stdout.write(
-          "CPL_SETUP=" +
-            progress.state +
-            " elapsed=" +
-            (progress.elapsedMs / 1000).toFixed(1) +
-            "s\n",
-        );
-      },
-    });
+    const reportProgress = (progress) => {
+      readiness = progress;
+      process.stdout.write(
+        "CPL_DEVELOPMENT=" +
+          progress.state +
+          " elapsed=" +
+          (progress.elapsedMs / 1000).toFixed(1) +
+          "s\n",
+      );
+    };
+    const warmed = (async () => {
+      await warmSetupPage({
+        url: LOCAL_URL,
+        timeoutMs: 300_000,
+        signal: warmupController.signal,
+        recognize: (body) => body.includes("CPL Command Center"),
+        onProgress: (progress) =>
+          reportProgress({
+            ...progress,
+            state: progress.state === "READY" ? "CHECKING_DATABASE" : progress.state,
+          }),
+      });
+      return warmSetupPage({
+        url: "http://127.0.0.1:" + LOCAL_PORT + "/api/auth/local/status",
+        timeoutMs: 180_000,
+        signal: warmupController.signal,
+        recognize: (body) => {
+          try {
+            const value = JSON.parse(body);
+            return value.development === true && value.ready === true;
+          } catch {
+            return false;
+          }
+        },
+        onProgress: reportProgress,
+      });
+    })();
     try {
       await Promise.race([warmed, childClosed]);
     } catch (error) {
       if (!stopping) throw error;
     }
-    if (readiness.state === "READY" && !stopping)
+    if (readiness.state === "READY" && !stopping) {
       process.stdout.write("CPL_LOCAL=READY " + LOCAL_URL + " Keep this terminal open.\n");
+      openLocalBrowser();
+    }
     const outcome = await childClosed;
     warmupController.abort();
     await warmed.catch(() => {});
     if (!stopping && outcome.code !== 0)
       throw new Error("Local web process exited unsuccessfully. Review the launch output above.");
   } catch (error) {
-    if (child && child.exitCode === null && child.signalCode === null) {
+    if (database || (child && child.exitCode === null && child.signalCode === null)) {
       try {
         await stop();
       } catch (stopError) {
@@ -519,6 +677,7 @@ export async function startLocal() {
     }
     throw error;
   } finally {
+    await stop();
     cleanup();
   }
 }
@@ -552,7 +711,25 @@ export async function stopLocal() {
     throw new Error(
       "The owning launcher refused shutdown. Review its terminal; no unverified process was terminated.",
     );
-  process.stdout.write("CPL_LOCAL=STOPPED Owned provisioning web process stopped.\n");
+  process.stdout.write(
+    "CPL_LOCAL=STOPPED Local web, jobs and PostgreSQL stopped. Test records are preserved.\n",
+  );
+}
+
+export async function restartLocal() {
+  await stopLocal();
+  const root = ensureLocalBoundary();
+  // Wait for the prior launcher to release its control pipe before acquiring it.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      await requestControl(runtimePaths(root).pipe, { action: "status" });
+    } catch (error) {
+      if (["ENOENT", "ECONNREFUSED"].includes(error.code)) return startLocal();
+      throw error;
+    }
+    await delay(200);
+  }
+  throw new Error("The previous launcher has not finished stopping. Review its terminal.");
 }
 
 // A read-only preflight for installers and verification. This does not claim a
@@ -605,11 +782,12 @@ export async function doctorLocal() {
         : "STOPPED_OR_UNREACHABLE",
       readiness: launcher?.readiness ?? null,
       url: LOCAL_URL,
-      productRuntime: "UNCONFIGURED",
-      mode: "provisioning-only",
-      workersStarted: false,
+      productRuntime:
+        launcher?.readiness?.state === "READY" ? "READY" : launcher ? "STARTING" : "STOPPED",
+      mode: "local-development",
+      workersStarted: launcher?.database != null,
       providerCallsEnabled: false,
-      databaseProvisioned: false,
+      databaseProvisioned: existsSync(developmentDatabasePaths(LOCAL_CACHE_ROOT).marker),
     }) + "\n",
   );
   if (!dependencies.ok || workspaceCopies.state !== "FRESH") process.exitCode = 1;
@@ -617,10 +795,15 @@ export async function doctorLocal() {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const commands = { start: startLocal, stop: stopLocal, doctor: doctorLocal };
+  const commands = {
+    start: startLocal,
+    stop: stopLocal,
+    restart: restartLocal,
+    doctor: doctorLocal,
+  };
   const command = commands[process.argv[2]];
   if (!command) {
-    process.stderr.write("Usage: node scripts/cpl-local.mjs start|stop|doctor\n");
+    process.stderr.write("Usage: node scripts/cpl-local.mjs start|stop|restart|doctor\n");
     process.exitCode = 1;
   } else
     command().catch((error) => {

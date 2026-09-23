@@ -18,7 +18,7 @@ import {
   normalizeDirectoryReadErrors,
   normalizeNonLinkErrors,
 } from "../../apps/web/lib/webpack-directory-read";
-import nextConfig from "../../apps/web/next.config";
+import { nextConfig } from "../../apps/web/next.config";
 
 type InputFileSystem = Parameters<typeof normalizeDirectoryReadErrors>[0];
 type LinkFileSystem = Parameters<typeof normalizeNonLinkErrors>[0];

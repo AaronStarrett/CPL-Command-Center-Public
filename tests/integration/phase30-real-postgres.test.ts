@@ -58,10 +58,10 @@ describePostgres("Phase 3.0 real PostgreSQL concurrency", () => {
     });
     const migrated = await migrateDatabase(database);
     expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(
-      "0026_cpl_hosted_workflow.sql",
+      "0035_cpl_delivery_closeout.sql",
     );
     await expect(verifyMigrations(database)).resolves.toMatchObject({
-      current: "0026_cpl_hosted_workflow.sql",
+      current: "0035_cpl_delivery_closeout.sql",
     });
     await seedDatabase(database);
   }, 60_000);

@@ -13,6 +13,7 @@
     "workflow:foundation": "node ../../scripts/run-guarded.mjs tsx src/index.ts --once"
   },
   "dependencies": {
+    "@neondatabase/serverless": "1.1.0",
     "@bea/artifacts": "workspace:*",
     "@bea/automation": "workspace:*",
     "@bea/config": "workspace:*",

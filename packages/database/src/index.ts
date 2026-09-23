@@ -40,3 +40,7 @@ export * from "./tenant-repository.js";
 export * from "./hosted-workflow.js";
 export * from "./hosted-database-role.js";
 export * from "./hosted-auth-store.js";
+
+export * from "./cpl-automation-repository.js";
+
+export * from "./cpl-delivery-repository.js";

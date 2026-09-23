@@ -54,6 +54,7 @@ const rootFiles = new Set([
   "README.md",
   "CONTRIBUTING.md",
   "SECURITY.md",
+  "OPEN-CPL-COMMAND-CENTER.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -68,6 +69,11 @@ const publicDocs = new Set([
   "docs/CPL_TENANT_FOUNDATION.md",
   "docs/HOSTING_COMPATIBILITY.md",
   "docs/HOSTED_TEST_COVERAGE.md",
+  "docs/PRODUCT_FEATURE_MAP.md",
+  "docs/LOCAL_PHASE2_TESTING.md",
+  "docs/LOCAL_PHASE3_TESTING.md",
+  "docs/LOCAL_PHASE4_TESTING.md",
+  "docs/DEFERRED_HOSTING.md",
 ]);
 const textExtension = /\.(?:[cm]?[jt]sx?|json|jsonc|css|sql|ya?ml|toml|md|mdc|ps1|cmd|example)$/iu;
 const assetPaths = new Set(["apps/web/public/brand/cpl-logo.png", "apps/web/public/_headers"]);

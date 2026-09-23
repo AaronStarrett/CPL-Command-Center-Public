@@ -1,3 +1,4 @@
+import { CPL_LEAD_EDITABLE_FIELDS } from "@bea/domain/cpl-intake";
 import { withHostedRuntime, requireHostedSession, requireHostedMutation } from "@/lib/hosted-auth";
 import { SqlCplWorkflowRepository } from "@bea/database/hosted";
 
@@ -109,6 +110,12 @@ function failure(error: unknown) {
     "CPL_VERSION_CONFLICT",
     "CPL_PROPOSAL_VERSION_CONFLICT",
     "CPL_PROPOSAL_NOT_READY",
+    "CPL_LEAD_NOT_READY",
+    "CPL_LEAD_REVIEW_REQUIRED",
+    "CPL_LEAD_VERSION_CONFLICT",
+    "CPL_REFERENCE_CONFLICT",
+    "CPL_DUPLICATE_REVIEW_CONFLICT",
+    "CPL_ASSIGNEE_UNAVAILABLE",
     "CPL_RECORD_NOT_FOUND",
     "CPL_HOSTED_AUTH_NOT_CONFIGURED",
     "CPL_AUTH_RATE_LIMITED",
@@ -128,6 +135,7 @@ function failure(error: unknown) {
           ? 401
           : code.includes("CONFLICT") ||
               code === "CPL_PROPOSAL_NOT_READY" ||
+              code === "CPL_LEAD_NOT_READY" ||
               code === "CPL_ORGANIZATION_CONTEXT_CHANGED"
             ? 409
             : code.includes("INVALID")
@@ -155,13 +163,16 @@ export async function GET(request: Request, context: Context) {
               jobs: [],
             });
           const tenant = selectedTenant(current, request, false);
-          const { leads, proposals, jobs } = await repository.readWorkspace(tenant);
+          const { leads, proposals, jobs, intakeDirectory, permissions } =
+            await repository.readWorkspace(tenant);
           return json({
             organizations,
             currentOrganizationId: organizationId,
             leads,
             proposals,
             jobs,
+            intakeDirectory,
+            permissions,
           });
         }
         const tenant = selectedTenant(
@@ -171,6 +182,8 @@ export async function GET(request: Request, context: Context) {
           path[0] === "proposals" && path.length === 3 && path[2] === "download",
         );
         await runtime.tenants.authorize({ ...tenant, permission: "records:read" });
+        if (path[0] === "directory" && path.length === 1)
+          return json(await repository.getIntakeDirectory(tenant));
         if (path[0] === "leads" && path.length === 1)
           return json(await repository.listLeads(tenant));
         if (path[0] === "leads" && path.length === 2)
@@ -230,22 +243,67 @@ export async function POST(request: Request, context: Context) {
         const tenant = selectedTenant(current, request, true);
         await runtime.tenants.authorize({ ...tenant, permission: "records:write" });
         const repository = new SqlCplWorkflowRepository(runtime.database, runtime.tenants);
+        if (path[0] === "directory" && path.length === 1) {
+          const input = await body(request, [
+            "kind",
+            "name",
+            "customerId",
+            "email",
+            "phone",
+            "address",
+            "idempotencyKey",
+          ]);
+          if (!["customer", "contact", "site"].includes(String(input.kind))) throw new InputError();
+          return json(
+            await repository.createDirectoryEntry({
+              ...tenant,
+              kind: input.kind as "customer" | "contact" | "site",
+              name: field(input, "name"),
+              customerId: field(input, "customerId", true) || null,
+              email: field(input, "email", true),
+              phone: field(input, "phone", true),
+              address: field(input, "address", true),
+              idempotencyKey: field(input, "idempotencyKey"),
+            }),
+            201,
+          );
+        }
         if (path[0] === "leads" && path.length === 1) {
           const input = await body(request, [
-            "title",
-            "contactName",
-            "contactEmail",
-            "details",
+            ...CPL_LEAD_EDITABLE_FIELDS,
             "idempotencyKey",
+            "sourceReference",
+            "evidenceNote",
           ]);
           return json(
             await repository.createLead({
+              ...input,
               ...tenant,
               title: field(input, "title"),
-              contactName: field(input, "contactName"),
-              contactEmail: field(input, "contactEmail", true) || undefined,
-              details: field(input, "details", true),
               idempotencyKey: field(input, "idempotencyKey"),
+            }),
+            201,
+          );
+        }
+        if (path[0] === "leads" && path.length === 3 && path[2] === "evidence") {
+          const input = await body(request, [
+            "expectedVersion",
+            "idempotencyKey",
+            "label",
+            "reference",
+            "note",
+          ]);
+          if (!Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 1)
+            throw new InputError();
+          return json(
+            await repository.appendLeadEvidence({
+              ...tenant,
+              leadId: path[1]!,
+              expectedVersion: Number(input.expectedVersion),
+              idempotencyKey: field(input, "idempotencyKey"),
+              label: field(input, "label"),
+              reference: field(input, "reference", true),
+              note: field(input, "note", true),
             }),
             201,
           );
@@ -278,6 +336,41 @@ export async function POST(request: Request, context: Context) {
           );
         }
         return json({ code: "CPL_RECORD_NOT_FOUND" }, 404);
+      },
+      { sessionRequest: request },
+    );
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function PATCH(request: Request, context: Context) {
+  try {
+    const { path } = await context.params;
+    if (path[0] !== "leads" || path.length !== 2)
+      return json({ code: "CPL_RECORD_NOT_FOUND" }, 404);
+    return await withHostedRuntime(
+      async (runtime) => {
+        const current = await requireHostedMutation(runtime, request);
+        const tenant = selectedTenant(current, request, true);
+        const input = await body(request, [
+          ...CPL_LEAD_EDITABLE_FIELDS,
+          "expectedVersion",
+          "duplicateDisposition",
+          "duplicateReason",
+          "duplicateLeadId",
+        ]);
+        if (!Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 1)
+          throw new InputError();
+        const repository = new SqlCplWorkflowRepository(runtime.database, runtime.tenants);
+        return json(
+          await repository.updateLead({
+            ...input,
+            ...tenant,
+            leadId: path[1]!,
+            expectedVersion: Number(input.expectedVersion),
+          }),
+        );
       },
       { sessionRequest: request },
     );

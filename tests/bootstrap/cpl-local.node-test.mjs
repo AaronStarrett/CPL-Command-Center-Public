@@ -7,6 +7,7 @@ import {
   LOCAL_CACHE_ROOT,
   LOCAL_PORT,
   LOCAL_URL,
+  VERIFIED_NODE,
   createControlServer,
   createSafeEnvironment,
   ownsProcessEvidence,
@@ -17,7 +18,7 @@ import {
 
 const root = "D:\\Cyber Pirate Labs\\03_ENGINEERING\\Repositories\\CPL-Command-Center";
 
-test("provisioning launch strips inherited secrets, demo switches, loaders, and external database settings", () => {
+test("development launch strips inherited secrets, demo switches, loaders, and external database settings", () => {
   const environment = createSafeEnvironment(root, {
     Path: "D:\\PortableNode;C:\\Windows\\System32",
     SystemRoot: "C:\\Windows",
@@ -30,6 +31,11 @@ test("provisioning launch strips inherited secrets, demo switches, loaders, and 
     CPL_ALLOW_OPERATIONAL_RUNTIME: "true",
     BEA_OWNER_EVALUATION_PUBLIC_ORIGIN: "https://synthetic.invalid",
     HTTP_PROXY: "https://synthetic.invalid",
+    CPL_LOCAL_DEVELOPMENT_AUTH: "true",
+    CPL_LOCAL_DATABASE_URL: "postgres://untrusted.invalid/db",
+    CPL_LOCAL_SESSION_SECRET: "untrusted",
+    CPL_HOSTED_ENABLED: "true",
+    PATH: "C:\\UntrustedNode",
   });
   assert.equal(environment.OPENAI_API_KEY, "");
   assert.equal(environment.DATABASE_URL, "");
@@ -38,13 +44,19 @@ test("provisioning launch strips inherited secrets, demo switches, loaders, and 
   assert.equal(environment.CPL_ALLOW_OPERATIONAL_RUNTIME, undefined);
   assert.equal(environment.BEA_OWNER_EVALUATION_PUBLIC_ORIGIN, undefined);
   assert.equal(environment.HTTP_PROXY, undefined);
+  assert.equal(environment.CPL_LOCAL_DEVELOPMENT_AUTH, undefined);
+  assert.equal(environment.CPL_LOCAL_DATABASE_URL, undefined);
+  assert.equal(environment.CPL_LOCAL_SESSION_SECRET, undefined);
+  assert.equal(environment.CPL_HOSTED_ENABLED, undefined);
+  assert.equal(environment.PATH, undefined);
+  assert.ok(environment.Path.startsWith(path.dirname(VERIFIED_NODE)));
   assert.equal(environment.APP_MODE, "production");
   assert.equal(environment.NODE_ENV, "development");
   assert.equal(environment.DEMO_AUTH_ENABLED, "false");
   assert.equal(environment.BEA_DISABLE_ENV_FILE, "true");
   assert.equal(environment.APP_BASE_URL, "http://127.0.0.1:3400");
   assert.equal(LOCAL_PORT, 3400);
-  assert.equal(LOCAL_URL, "http://127.0.0.1:3400/setup");
+  assert.equal(LOCAL_URL, "http://127.0.0.1:3400/workspace");
 });
 
 test("setup readiness waits for complete HTTP content after the listening socket is available", async () => {

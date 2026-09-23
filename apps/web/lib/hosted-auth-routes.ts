@@ -1,4 +1,5 @@
 import "server-only";
+import { withHostedSessionRuntime } from "./hosted-session-http";
 
 import { NextResponse } from "next/server";
 import {
@@ -10,6 +11,11 @@ import {
   CPL_HOSTED_SESSION_COOKIE,
   hostedStepUpRequired,
   hostedTokenHash,
+  hasLocalDevelopmentConfiguration,
+  assertLocalDevelopmentRequest,
+  CPL_LOCAL_SESSION_COOKIE,
+  CPL_LOCAL_CSRF_COOKIE,
+  signLocalSessionCookie,
   type CplHostedSignInResult,
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
@@ -43,18 +49,23 @@ function sessionResponse(
   result: CplHostedSignInResult,
   response: NextResponse = NextResponse.json({ ok: true }),
 ) {
+  const local = hasLocalDevelopmentConfiguration();
   const options = {
-    secure: true,
+    secure: !local,
     path: "/",
     expires: new Date(result.session.expiresAt),
     priority: "high" as const,
   };
-  response.cookies.set(CPL_HOSTED_SESSION_COOKIE, result.sessionToken, {
-    ...options,
-    httpOnly: true,
-    sameSite: "lax",
-  });
-  response.cookies.set(CPL_HOSTED_CSRF_COOKIE, result.csrfToken, {
+  response.cookies.set(
+    local ? CPL_LOCAL_SESSION_COOKIE : CPL_HOSTED_SESSION_COOKIE,
+    local ? signLocalSessionCookie(result.sessionToken) : result.sessionToken,
+    {
+      ...options,
+      httpOnly: true,
+      sameSite: "lax",
+    },
+  );
+  response.cookies.set(local ? CPL_LOCAL_CSRF_COOKIE : CPL_HOSTED_CSRF_COOKIE, result.csrfToken, {
     ...options,
     httpOnly: false,
     sameSite: "strict",
@@ -63,7 +74,21 @@ function sessionResponse(
 }
 
 function clearCookie(response: NextResponse, name: string, httpOnly = true) {
-  response.cookies.set(name, "", { secure: true, httpOnly, sameSite: "lax", path: "/", maxAge: 0 });
+  const local = hasLocalDevelopmentConfiguration();
+  if (local && name === CPL_HOSTED_SESSION_COOKIE) name = CPL_LOCAL_SESSION_COOKIE;
+  if (local && name === CPL_HOSTED_CSRF_COOKIE) name = CPL_LOCAL_CSRF_COOKIE;
+  response.cookies.set(name, "", {
+    secure: !local,
+    httpOnly,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+function requireHostedIdentityProvider() {
+  if (hasLocalDevelopmentConfiguration())
+    throw new CplHostedAuthenticationError("CPL_HOSTED_AUTH_UNAVAILABLE", 404);
 }
 
 async function boundedJson(request: Request): Promise<Record<string, unknown>> {
@@ -95,6 +120,7 @@ async function boundedJson(request: Request): Promise<Record<string, unknown>> {
 
 export async function hostedGoogleStart(request: Request): Promise<NextResponse> {
   try {
+    requireHostedIdentityProvider();
     return await withHostedRuntime(async (runtime) => {
       assertHostedOrigin(request, runtime.origin);
       const result = await runtime.auth.beginSignIn();
@@ -115,6 +141,7 @@ export async function hostedGoogleStart(request: Request): Promise<NextResponse>
 
 export async function hostedGoogleCallback(request: Request): Promise<NextResponse> {
   try {
+    requireHostedIdentityProvider();
     return await withHostedRuntime(async (runtime) => {
       const url = new URL(request.url);
       const state = url.searchParams.getAll("state");
@@ -167,47 +194,59 @@ export async function hostedGoogleCallback(request: Request): Promise<NextRespon
 }
 
 export async function hostedSession(request: Request): Promise<NextResponse> {
-  const status = hostedAuthConfigurationStatus();
-  if (!status.configured)
-    return secureResponse(
-      NextResponse.json(
-        { authenticated: false, code: "CPL_HOSTED_AUTH_NOT_CONFIGURED" },
-        { status: 503 },
-      ),
-    );
-  const sessionToken = await hostedCookie(CPL_HOSTED_SESSION_COOKIE, request);
-  if (!sessionToken) return secureResponse(NextResponse.json({ authenticated: false }));
   try {
-    return await withHostedRuntime(async (runtime) => {
-      const session = await runtime.auth.readSession(sessionToken);
-      if (!session) return secureResponse(NextResponse.json({ authenticated: false }));
-      const csrfToken = await hostedCookie(CPL_HOSTED_CSRF_COOKIE, request);
-      if (
-        !csrfToken ||
-        !/^[A-Za-z0-9_-]{43}$/u.test(csrfToken) ||
-        hostedTokenHash(csrfToken) !== session.csrfTokenHash
-      )
-        return secureResponse(
-          NextResponse.json({ authenticated: false, code: "CPL_SESSION_COOKIES_INCOMPLETE" }),
-        );
+    const local = hasLocalDevelopmentConfiguration();
+    if (local) assertLocalDevelopmentRequest(request);
+    const descriptor = local ? { authenticationMode: "local-development", synthetic: true } : {};
+    if (!local && !hostedAuthConfigurationStatus().configured)
       return secureResponse(
-        NextResponse.json({
-          authenticated: true,
-          identity: {
-            id: session.identityId,
-            displayName: session.displayName,
-            email: session.email,
-          },
-          session: {
-            expiresAt: session.expiresAt,
-            currentOrganizationId: session.selectedOrganizationId,
-            stepUpRequired: hostedStepUpRequired(session),
-            hasPasskey: await runtime.auth.hasPasskey(sessionToken),
-          },
-          csrfToken,
-        }),
+        NextResponse.json(
+          { authenticated: false, code: "CPL_HOSTED_AUTH_NOT_CONFIGURED" },
+          { status: 503 },
+        ),
       );
-    });
+    const sessionToken = await hostedCookie(CPL_HOSTED_SESSION_COOKIE, request);
+    if (!sessionToken)
+      return secureResponse(NextResponse.json({ authenticated: false, ...descriptor }));
+    return await withHostedSessionRuntime(
+      async (runtime) => {
+        const session = await runtime.auth.readSession(sessionToken);
+        if (!session)
+          return secureResponse(NextResponse.json({ authenticated: false, ...descriptor }));
+        const csrfToken = await hostedCookie(CPL_HOSTED_CSRF_COOKIE, request);
+        if (
+          !csrfToken ||
+          !/^[A-Za-z0-9_-]{43}$/u.test(csrfToken) ||
+          hostedTokenHash(csrfToken) !== session.csrfTokenHash
+        )
+          return secureResponse(
+            NextResponse.json({
+              authenticated: false,
+              code: "CPL_SESSION_COOKIES_INCOMPLETE",
+              ...descriptor,
+            }),
+          );
+        return secureResponse(
+          NextResponse.json({
+            authenticated: true,
+            ...descriptor,
+            identity: {
+              id: session.identityId,
+              displayName: session.displayName,
+              email: session.email,
+            },
+            session: {
+              expiresAt: session.expiresAt,
+              currentOrganizationId: session.selectedOrganizationId,
+              stepUpRequired: hostedStepUpRequired(session),
+              hasPasskey: await runtime.auth.hasPasskey(sessionToken),
+            },
+            csrfToken,
+          }),
+        );
+      },
+      { request },
+    );
   } catch (error) {
     return errorResponse(error);
   }
@@ -215,10 +254,13 @@ export async function hostedSession(request: Request): Promise<NextResponse> {
 
 export async function hostedRenew(request: Request): Promise<NextResponse> {
   try {
-    return await withHostedRuntime(async (runtime) => {
-      const { sessionToken } = await requireHostedMutation(runtime, request);
-      return sessionResponse(await runtime.auth.renew(sessionToken));
-    });
+    return await withHostedRuntime(
+      async (runtime) => {
+        const { sessionToken } = await requireHostedMutation(runtime, request);
+        return sessionResponse(await runtime.auth.renew(sessionToken));
+      },
+      { request },
+    );
   } catch (error) {
     return errorResponse(error);
   }
@@ -226,15 +268,18 @@ export async function hostedRenew(request: Request): Promise<NextResponse> {
 
 export async function hostedLogout(request: Request): Promise<NextResponse> {
   try {
-    return await withHostedRuntime(async (runtime) => {
-      const { sessionToken } = await requireHostedMutation(runtime, request);
-      await runtime.auth.signOut(sessionToken);
-      const response = secureResponse(NextResponse.json({ ok: true }));
-      clearCookie(response, CPL_HOSTED_SESSION_COOKIE);
-      clearCookie(response, CPL_HOSTED_CSRF_COOKIE, false);
-      clearCookie(response, CPL_HOSTED_OAUTH_COOKIE);
-      return response;
-    });
+    return await withHostedRuntime(
+      async (runtime) => {
+        const { sessionToken } = await requireHostedMutation(runtime, request);
+        await runtime.auth.signOut(sessionToken);
+        const response = secureResponse(NextResponse.json({ ok: true }));
+        clearCookie(response, CPL_HOSTED_SESSION_COOKIE);
+        clearCookie(response, CPL_HOSTED_CSRF_COOKIE, false);
+        clearCookie(response, CPL_HOSTED_OAUTH_COOKIE);
+        return response;
+      },
+      { request },
+    );
   } catch (error) {
     return errorResponse(error);
   }
@@ -245,6 +290,7 @@ export async function hostedPasskeyOptions(
   kind: "registration" | "authentication",
 ): Promise<NextResponse> {
   try {
+    requireHostedIdentityProvider();
     return await withHostedRuntime(async (runtime) => {
       const { sessionToken } = await requireHostedMutation(runtime, request);
       const options =
@@ -263,6 +309,7 @@ export async function hostedPasskeyVerify(
   kind: "registration" | "authentication",
 ): Promise<NextResponse> {
   try {
+    requireHostedIdentityProvider();
     return await withHostedRuntime(async (runtime) => {
       const { sessionToken } = await requireHostedMutation(runtime, request);
       const body = await boundedJson(request);
@@ -290,6 +337,45 @@ export async function hostedPasskeyVerify(
             );
       return sessionResponse(result);
     });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function localDevelopmentStatus(request: Request): Promise<NextResponse> {
+  if (!hasLocalDevelopmentConfiguration())
+    return secureResponse(NextResponse.json({ ok: false }, { status: 404 }));
+  try {
+    assertLocalDevelopmentRequest(request);
+    return await withHostedRuntime(
+      async () => secureResponse(NextResponse.json({ development: true, ready: true })),
+      { request },
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function localDevelopmentSignIn(request: Request): Promise<NextResponse> {
+  if (!hasLocalDevelopmentConfiguration())
+    return secureResponse(NextResponse.json({ ok: false }, { status: 404 }));
+  try {
+    assertLocalDevelopmentRequest(request);
+    const body = await boundedJson(request);
+    if (Object.keys(body).length !== 0)
+      throw new CplHostedAuthenticationError("CPL_INVALID_AUTH_REQUEST", 400);
+    return await withHostedRuntime(
+      async (runtime) => {
+        const { issueLocalDevelopmentSession } = await import("./local-development-auth");
+        const previous = await hostedCookie(CPL_HOSTED_SESSION_COOKIE, request);
+        const result = await issueLocalDevelopmentSession(runtime, request, previous);
+        return sessionResponse(
+          result,
+          NextResponse.json({ ok: true, authenticationMode: "local-development", synthetic: true }),
+        );
+      },
+      { request },
+    );
   } catch (error) {
     return errorResponse(error);
   }

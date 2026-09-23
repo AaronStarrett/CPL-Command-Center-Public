@@ -121,7 +121,12 @@ function fixture(membershipCount = 1) {
         rows = [
           { id: parameters[0], slug: "synthetic", display_name: "Synthetic", status: "active" },
         ];
-      else if (sql.includes("SELECT m.identity_id")) rows = [{ identity_id: identityId }];
+      else if (sql.includes("AS protected FROM pg_class")) rows = [{ protected: true }];
+      else if (/SELECT (?:id,name|id,customer_id,name|m.identity_id,i.display_name)/u.test(sql)) {
+        expect(state.context).toBe(organizationId);
+        expect(parameters[0]).toBe(organizationId);
+        rows = [];
+      } else if (sql.includes("SELECT m.identity_id")) rows = [{ identity_id: identityId }];
       else if (sql.includes("SELECT m.role,m.version"))
         rows = state.membership ? [{ role: state.role, version: 1 }] : [];
       else if (sql.includes("SELECT enabled,usage_limit"))
@@ -189,6 +194,19 @@ function fixture(membershipCount = 1) {
 }
 const business = (sql: string) =>
   /SELECT \* FROM cpl_(workflow_leads|proposal_drafts|workflow_jobs)/u.test(sql);
+const emptyWorkspace = {
+  leads: [],
+  proposals: [],
+  jobs: [],
+  intakeDirectory: { customers: [], contacts: [], sites: [], members: [] },
+  permissions: {
+    canCreateLead: true,
+    canEditLead: true,
+    canReviewLead: false,
+    canCreateProposal: true,
+    canEditProposal: true,
+  },
+};
 describe("workspace transaction authorization and failure boundaries", () => {
   it.each([
     "intake",
@@ -232,7 +250,7 @@ describe("workspace transaction authorization and failure boundaries", () => {
   );
   it("holds both module locks before business queries and returns only after commit", async () => {
     const f = fixture();
-    expect(await f.workflow.readWorkspace(request)).toEqual({ leads: [], proposals: [], jobs: [] });
+    expect(await f.workflow.readWorkspace(request)).toEqual(emptyWorkspace);
     const entitlement = f.commands.filter((x) => x.sql.includes("SELECT enabled,usage_limit"));
     expect(entitlement.map((x) => x.parameters[1])).toEqual([
       "intake-job-tracker",
@@ -303,7 +321,7 @@ describe("workspace transaction authorization and failure boundaries", () => {
       f.state.revoked = true;
     };
     release.resolve();
-    expect(await first).toEqual({ leads: [], proposals: [], jobs: [] });
+    expect(await first).toEqual(emptyWorkspace);
     await rejected;
     expect(f.commands.filter((x) => business(x.sql))).toHaveLength(3);
     expect(f.commands.filter((x) => x.sql.includes("SELECT s.id AS session_id"))).toHaveLength(2);
@@ -312,10 +330,10 @@ describe("workspace transaction authorization and failure boundaries", () => {
 });
 describe("source-inferred complete selected workspace SQL and pg frontend frames", () => {
   it.each([
-    { transport: "hyperdrive", memberships: 1, before: [45, 149], after: [26, 90] },
-    { transport: "hyperdrive", memberships: 2, before: [47, 159], after: [28, 100] },
-    { transport: "direct", memberships: 1, before: [39, 143], after: [23, 87] },
-    { transport: "direct", memberships: 2, before: [41, 153], after: [25, 97] },
+    { transport: "hyperdrive", memberships: 1, before: [46, 150], after: [31, 111] },
+    { transport: "hyperdrive", memberships: 2, before: [48, 160], after: [33, 121] },
+    { transport: "direct", memberships: 1, before: [40, 144], after: [28, 108] },
+    { transport: "direct", memberships: 2, before: [42, 154], after: [30, 118] },
   ])(
     "$transport batches authorization with $memberships memberships and retains the first session read",
     async (scenario) => {

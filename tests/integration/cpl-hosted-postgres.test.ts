@@ -188,7 +188,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
     await control?.close();
   }, 60_000);
   it("applies the forward migration with no identities, organizations or business seed", async () => {
-    expect((await verifyMigrations(admin)).current).toBe("0026_cpl_hosted_workflow.sql");
+    expect((await verifyMigrations(admin)).current).toBe("0035_cpl_delivery_closeout.sql");
     for (const table of [
       "cpl_identities",
       "cpl_organizations",
@@ -481,6 +481,9 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
       contactName: "Jordan Example",
       contactEmail: "jordan@example.invalid",
       details: "A synthetic acceptance record.",
+      requestedService: "Fictional advisory service",
+      assignedMemberIdentityId: owner.identityId,
+      nextAction: "Prepare a manual proposal",
       idempotencyKey: randomUUID(),
     };
     const results = await Promise.all([workflows.createLead(input), workflows.createLead(input)]);
@@ -490,6 +493,12 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
       code: "CPL_IDEMPOTENCY_CONFLICT",
     });
     expect(await workflows.listLeads(requestA)).toHaveLength(1);
+    leadA = await workflows.updateLead({
+      ...requestA,
+      leadId: leadA.id,
+      expectedVersion: leadA.version,
+      status: "ready_for_proposal",
+    });
   });
   it("rejects forged organization, lead and proposal IDs across every read/write/download path", async () => {
     proposalA = await draft();
@@ -933,12 +942,525 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
         "Manually revised scope",
       );
       expect(await repo.listLeads(requestB)).toEqual([]);
-      expect((await verifyMigrations(restoredAdmin)).current).toBe("0026_cpl_hosted_workflow.sql");
+      expect((await verifyMigrations(restoredAdmin)).current).toBe(
+        "0035_cpl_delivery_closeout.sql",
+      );
     } finally {
       await restoredWeb?.close();
       await restoredAdmin.close();
     }
   }, 180_000);
+  async function intakeWorkspace() {
+    const organization = await tenants.createEnabledOrganization(ownerMaterial.raw, {
+      slug: `intake-${randomBytes(5).toString("hex")}`,
+      displayName: "Fictional intake test",
+    });
+    return { sessionToken: ownerMaterial.raw, organizationId: organization.id };
+  }
+  function completeIntake(request: CplTenantRequest, extra: Record<string, unknown> = {}) {
+    return {
+      ...request,
+      title: "Fictional service inquiry",
+      contactName: "Fictional customer",
+      details: "Manual request evidence",
+      requestedService: "Configurable advisory service",
+      assignedMemberIdentityId: owner.identityId,
+      nextAction: "Prepare scope",
+      idempotencyKey: randomUUID(),
+      ...extra,
+    };
+  }
+  it("captures incomplete intake, preserves original evidence during correction, and gates new proposals", async () => {
+    const request = await intakeWorkspace();
+    const captured = await workflows.createLead({
+      ...request,
+      title: "Incomplete telephone inquiry",
+      sourceType: "phone",
+      sourceReference: "call:fictional-reference",
+      evidenceNote: "Original words from caller",
+      idempotencyKey: randomUUID(),
+    });
+    expect(captured.readiness.readyForProposal).toBe(false);
+    expect(captured.readiness.missingInformation).toContainEqual(
+      expect.objectContaining({ code: "requested_service", severity: "blocking" }),
+    );
+    await expect(
+      workflows.createProposalDraft({
+        ...request,
+        leadId: captured.id,
+        title: "Premature",
+        content: "Manual scope",
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+    await expect(
+      workflows.updateLead({
+        ...request,
+        leadId: captured.id,
+        expectedVersion: 1,
+        status: "ready_for_proposal",
+      }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+    expect((await workflows.getLead({ ...request, leadId: captured.id })).version).toBe(1);
+    const corrected = await workflows.updateLead({
+      ...request,
+      leadId: captured.id,
+      expectedVersion: 1,
+      contactName: "Corrected fictional contact",
+      details: "Clarified request",
+      requestedService: "Remote advisory",
+      assignedMemberIdentityId: owner.identityId,
+      nextAction: "Prepare proposal",
+      status: "ready_for_proposal",
+    });
+    expect(corrected.readiness.readyForProposal).toBe(true);
+    expect(corrected.evidence).toEqual(captured.evidence);
+    expect(corrected.evidence[0]?.note).toBe("Original words from caller");
+    const frozen = await admin.query<{ capture_json: { contactName: string; details: string } }>(
+      "SELECT capture_json FROM cpl_lead_evidence WHERE organization_id=$1 AND lead_id=$2 AND kind='initial_capture'",
+      [request.organizationId, captured.id],
+    );
+    expect(frozen.rows[0]?.capture_json).toMatchObject({ contactName: "", details: "" });
+    const proposal = await workflows.createProposalDraft({
+      ...request,
+      leadId: captured.id,
+      title: "Eligible manual draft",
+      content: "Human supplied scope",
+      idempotencyKey: randomUUID(),
+    });
+    expect(proposal.leadId).toBe(captured.id);
+  });
+  it("uses same-tenant directory references and immutable snapshots without changing shared records", async () => {
+    const request = await intakeWorkspace();
+    const customer = await workflows.createDirectoryEntry({
+      ...request,
+      kind: "customer",
+      name: "Fictional shared customer",
+      idempotencyKey: randomUUID(),
+    });
+    const second = await workflows.createDirectoryEntry({
+      ...request,
+      kind: "customer",
+      name: "Another fictional customer",
+      idempotencyKey: randomUUID(),
+    });
+    const contact = await workflows.createDirectoryEntry({
+      ...request,
+      kind: "contact",
+      customerId: customer.id,
+      name: "Fictional contact",
+      email: "directory@example.invalid",
+      idempotencyKey: randomUUID(),
+    });
+    const site = await workflows.createDirectoryEntry({
+      ...request,
+      kind: "site",
+      customerId: customer.id,
+      name: "Fictional site",
+      address: "Example address",
+      idempotencyKey: randomUUID(),
+    });
+    const lead = await workflows.createLead({
+      ...completeIntake(request),
+      customerId: customer.id,
+      contactId: contact.id,
+      siteId: site.id,
+    });
+    expect(lead).toMatchObject({
+      customerName: customer.name,
+      contactName: contact.name,
+      contactEmail: "directory@example.invalid",
+      siteName: site.name,
+      siteAddress: "Example address",
+    });
+    const corrected = await workflows.updateLead({
+      ...request,
+      leadId: lead.id,
+      expectedVersion: lead.version,
+      contactName: "Corrected for this inquiry",
+    });
+    expect(corrected.contactName).toBe("Corrected for this inquiry");
+    expect(
+      (await workflows.getIntakeDirectory(request)).contacts.find((item) => item.id === contact.id)
+        ?.name,
+    ).toBe("Fictional contact");
+    await expect(
+      workflows.createLead({
+        ...completeIntake(request),
+        customerId: second.id,
+        contactId: contact.id,
+      }),
+    ).rejects.toMatchObject({ code: "CPL_REFERENCE_CONFLICT" });
+    await expect(
+      workflows.createLead({ ...completeIntake(requestB), customerId: customer.id }),
+    ).rejects.toMatchObject({ code: "CPL_RECORD_NOT_FOUND" });
+    await expect(
+      workflows.createDirectoryEntry({
+        ...requestB,
+        kind: "site",
+        customerId: customer.id,
+        name: "Forged relationship",
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CPL_RECORD_NOT_FOUND" });
+    expect((await workflows.getIntakeDirectory(requestB)).customers).toEqual([]);
+    await expect(
+      admin.query("UPDATE cpl_customers SET name='Overwritten' WHERE id=$1", [customer.id]),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+  it("appends evidence once, refuses stale changes and protects original evidence from mutation", async () => {
+    const request = await intakeWorkspace();
+    const lead = await workflows.createLead(completeIntake(request));
+    const input = {
+      ...request,
+      leadId: lead.id,
+      expectedVersion: lead.version,
+      label: "Original imported request",
+      reference: "message:fictional",
+      note: "Untrusted text remains data",
+      idempotencyKey: randomUUID(),
+    };
+    const appended = await workflows.appendLeadEvidence(input);
+    const replay = await workflows.appendLeadEvidence(input);
+    expect(replay).toEqual(appended);
+    expect(appended.evidence).toHaveLength(2);
+    expect(appended.version).toBe(2);
+    await expect(
+      workflows.appendLeadEvidence({ ...input, note: "Changed same key" }),
+    ).rejects.toMatchObject({ code: "CPL_IDEMPOTENCY_CONFLICT" });
+    await expect(
+      workflows.appendLeadEvidence({ ...input, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_VERSION_CONFLICT" });
+    await expect(
+      workflows.appendLeadEvidence({ ...input, ...requestB, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: "CPL_RECORD_NOT_FOUND" });
+    for (const statement of [
+      "UPDATE cpl_lead_evidence SET note='Forged' WHERE lead_id=$1",
+      "DELETE FROM cpl_lead_evidence WHERE lead_id=$1",
+    ])
+      await expect(admin.query(statement, [lead.id])).rejects.toMatchObject({ code: "42501" });
+    expect((await workflows.getLead({ ...request, leadId: lead.id })).evidence).toHaveLength(2);
+  });
+  it("requires reasoned duplicate review and invalidates stale dismissal when another match appears", async () => {
+    const request = await intakeWorkspace();
+    const original = await workflows.createLead(
+      completeIntake(request, { contactEmail: "duplicate@example.invalid" }),
+    );
+    const other = await workflows.createLead(
+      completeIntake(request, {
+        title: "Second inquiry",
+        contactEmail: "duplicate@example.invalid",
+      }),
+    );
+    const current = await workflows.getLead({ ...request, leadId: original.id });
+    expect(current.duplicateCandidates).toEqual([
+      { leadId: other.id, title: other.title, reasons: ["same_contact_email"] },
+    ]);
+    expect(current.readiness.conflicts).toContainEqual(
+      expect.objectContaining({ code: "duplicate_review_required" }),
+    );
+    await expect(
+      workflows.updateLead({
+        ...request,
+        leadId: original.id,
+        expectedVersion: 1,
+        duplicateDisposition: "distinct",
+        status: "ready_for_proposal",
+      }),
+    ).rejects.toMatchObject({ code: "CPL_INVALID_INPUT" });
+    const reviewed = await workflows.updateLead({
+      ...request,
+      leadId: original.id,
+      expectedVersion: 1,
+      duplicateDisposition: "distinct",
+      duplicateReason: "Separate scope confirmed by the customer",
+      status: "ready_for_proposal",
+    });
+    expect(reviewed.duplicateReview.disposition).toBe("distinct");
+    expect(reviewed.readiness.readyForProposal).toBe(true);
+    await workflows.createLead(
+      completeIntake(request, {
+        title: "Third inquiry",
+        contactEmail: "duplicate@example.invalid",
+      }),
+    );
+    const invalidated = await workflows.getLead({ ...request, leadId: original.id });
+    expect(invalidated.duplicateReview.disposition).toBe("unreviewed");
+    expect(invalidated.readiness.readyForProposal).toBe(false);
+    await expect(
+      workflows.createProposalDraft({
+        ...request,
+        leadId: original.id,
+        title: "Blocked again",
+        content: "Scope",
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+    const duplicate = await workflows.updateLead({
+      ...request,
+      leadId: original.id,
+      expectedVersion: invalidated.version,
+      duplicateDisposition: "duplicate",
+      duplicateReason: "Customer confirmed this is the same inquiry",
+      duplicateLeadId: other.id,
+      status: "needs_info",
+    });
+    expect(duplicate.readiness.readyForProposal).toBe(false);
+    const history = await admin.query<{ count: string }>(
+      "SELECT count(*) FROM cpl_lead_review_events WHERE organization_id=$1 AND lead_id=$2",
+      [request.organizationId, original.id],
+    );
+    expect(history.rows[0]?.count).toBe("2");
+    await expect(
+      admin.query("DELETE FROM cpl_lead_review_events WHERE lead_id=$1", [original.id]),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+  it("separates intake editing from review permission and rejects foreign or inactive assignees", async () => {
+    const request = await intakeWorkspace();
+    const reviewer = await signIn(`reviewer-${randomBytes(4).toString("hex")}`);
+    const member = await signIn(`member-${randomBytes(4).toString("hex")}`);
+    for (const [identity, role] of [
+      [reviewer.session.identityId, "reviewer"],
+      [member.session.identityId, "member"],
+    ])
+      await admin.query(
+        "INSERT INTO cpl_memberships(organization_id,identity_id,role,status) VALUES($1,$2,$3,'active')",
+        [request.organizationId, identity, role],
+      );
+    const reviewerRequest = { ...request, sessionToken: reviewer.issued.raw },
+      memberRequest = { ...request, sessionToken: member.issued.raw };
+    const lead = await workflows.createLead(completeIntake(request));
+    await expect(
+      workflows.updateLead({
+        ...reviewerRequest,
+        leadId: lead.id,
+        expectedVersion: 1,
+        title: "Reviewer forged edit",
+      }),
+    ).rejects.toMatchObject({ code: "CPL_ACCESS_DENIED" });
+    await expect(workflows.createLead(completeIntake(reviewerRequest))).rejects.toMatchObject({
+      code: "CPL_ACCESS_DENIED",
+    });
+    const corrected = await workflows.updateLead({
+      ...memberRequest,
+      leadId: lead.id,
+      expectedVersion: 1,
+      notes: "Member correction",
+    });
+    await expect(
+      workflows.updateLead({
+        ...memberRequest,
+        leadId: lead.id,
+        expectedVersion: corrected.version,
+        status: "ready_for_proposal",
+      }),
+    ).rejects.toMatchObject({ code: "CPL_ACCESS_DENIED" });
+    const reviewed = await workflows.updateLead({
+      ...reviewerRequest,
+      leadId: lead.id,
+      expectedVersion: corrected.version,
+      status: "ready_for_proposal",
+    });
+    expect(reviewed.status).toBe("ready_for_proposal");
+    expect((await workflows.readWorkspace(reviewerRequest)).permissions).toMatchObject({
+      canEditLead: false,
+      canReviewLead: true,
+    });
+    await expect(
+      workflows.createLead(
+        completeIntake(requestB, { assignedMemberIdentityId: member.session.identityId }),
+      ),
+    ).rejects.toMatchObject({ code: "CPL_ASSIGNEE_UNAVAILABLE" });
+    await admin.query(
+      "UPDATE cpl_memberships SET status='removed',version=version+1 WHERE organization_id=$1 AND identity_id=$2",
+      [request.organizationId, member.session.identityId],
+    );
+    await expect(
+      workflows.updateLead({
+        ...request,
+        leadId: lead.id,
+        expectedVersion: reviewed.version,
+        assignedMemberIdentityId: member.session.identityId,
+      }),
+    ).rejects.toMatchObject({ code: "CPL_ASSIGNEE_UNAVAILABLE" });
+  });
+  it("invalidates duplicate dismissal when the same candidate changes its matching evidence", async () => {
+    const request = await intakeWorkspace();
+    const original = await workflows.createLead(
+      completeIntake(request, {
+        contactEmail: "candidate-version@example.invalid",
+        siteAddress: "1 Example Road",
+      }),
+    );
+    const candidate = await workflows.createLead(
+      completeIntake(request, {
+        contactEmail: "candidate-version@example.invalid",
+        siteAddress: "2 Example Road",
+      }),
+    );
+    const reviewed = await workflows.updateLead({
+      ...request,
+      leadId: original.id,
+      expectedVersion: 1,
+      duplicateDisposition: "distinct",
+      duplicateReason: "These requests concern different sites",
+      status: "ready_for_proposal",
+    });
+    expect(reviewed.readiness.readyForProposal).toBe(true);
+    await workflows.updateLead({
+      ...request,
+      leadId: candidate.id,
+      expectedVersion: 1,
+      siteAddress: "1 Example Road",
+    });
+    const stale = await workflows.getLead({ ...request, leadId: original.id });
+    expect(stale.duplicateCandidates[0]?.reasons).toContain("same_site_and_title");
+    expect(stale.duplicateReview.disposition).toBe("unreviewed");
+    await expect(
+      workflows.createProposalDraft({
+        ...request,
+        leadId: original.id,
+        title: "Stale reviewed evidence",
+        content: "Manual scope",
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+  });
+  it("finds normalized customer/title and site/title matches despite internal whitespace", async () => {
+    const request = await intakeWorkspace();
+    const first = await workflows.createLead(
+      completeIntake(request, {
+        title: "Service   inquiry",
+        customerName: "Fictional   Company",
+        siteAddress: "1  Example Road",
+      }),
+    );
+    const second = await workflows.createLead(
+      completeIntake(request, {
+        title: "Service inquiry",
+        customerName: "Fictional Company",
+        siteAddress: "1 Example Road",
+      }),
+    );
+    expect(second.duplicateCandidates).toEqual([
+      {
+        leadId: first.id,
+        title: first.title,
+        reasons: ["same_customer_and_title", "same_site_and_title"],
+      },
+    ]);
+    expect(second.readiness.readyForProposal).toBe(false);
+    await expect(
+      workflows.updateLead({
+        ...request,
+        leadId: second.id,
+        expectedVersion: 1,
+        status: "ready_for_proposal",
+      }),
+    ).rejects.toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+  });
+  it("rechecks assigned-member revocation while proposal creation waits for its row lock", async () => {
+    const request = await intakeWorkspace();
+    const assigned = await signIn(`assignee-${randomBytes(4).toString("hex")}`);
+    await admin.query(
+      "INSERT INTO cpl_memberships(organization_id,identity_id,role,status) VALUES($1,$2,'member','active')",
+      [request.organizationId, assigned.session.identityId],
+    );
+    const lead = await workflows.createLead(
+      completeIntake(request, { assignedMemberIdentityId: assigned.session.identityId }),
+    );
+    await workflows.updateLead({
+      ...request,
+      leadId: lead.id,
+      expectedVersion: 1,
+      status: "ready_for_proposal",
+    });
+    const blocker = await admin.pool.connect();
+    let processing: Promise<CplProposalDraft> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "UPDATE cpl_memberships SET status='removed',version=version+1 WHERE organization_id=$1 AND identity_id=$2",
+        [request.organizationId, assigned.session.identityId],
+      );
+      processing = workflows.createProposalDraft({
+        ...request,
+        leadId: lead.id,
+        title: "Blocked proposal",
+        content: "Manual scope",
+        idempotencyKey: randomUUID(),
+      });
+      // Attach the handler before releasing a rejected operation; no unhandled rejection.
+      const outcome = processing.then(
+        (value) => ({ value, error: undefined }),
+        (error: unknown) => ({ value: undefined, error }),
+      );
+      let observedLock = false;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const activity = await admin.query<{ waiting: boolean }>(
+          "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=$1 AND wait_event_type='Lock' AND query LIKE 'SELECT m.identity_id FROM cpl_memberships m%FOR SHARE OF m,i') AS waiting",
+          [databaseName],
+        );
+        if (activity.rows[0]?.waiting) {
+          observedLock = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(observedLock).toBe(true);
+      await blocker.query("COMMIT");
+      expect((await outcome).error).toMatchObject({ code: "CPL_LEAD_NOT_READY" });
+      expect(await workflows.listProposalDrafts(request)).toEqual([]);
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await processing?.catch(() => undefined);
+    }
+  });
+  it("fences concurrent corrections and enforces RLS on all five new record types", async () => {
+    const request = await intakeWorkspace();
+    const lead = await workflows.createLead(completeIntake(request));
+    const results = await Promise.allSettled(
+      ["First", "Second"].map((notes) =>
+        workflows.updateLead({ ...request, leadId: lead.id, expectedVersion: 1, notes }),
+      ),
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({
+      reason: { code: "CPL_LEAD_VERSION_CONFLICT" },
+    });
+    for (const table of [
+      "cpl_customers",
+      "cpl_contacts",
+      "cpl_sites",
+      "cpl_lead_evidence",
+      "cpl_lead_review_events",
+    ])
+      expect((await web.query(`SELECT * FROM ${table}`)).rows).toEqual([]);
+    await scope(web, requestB.organizationId, async (executor) => {
+      expect(
+        (await executor.query("SELECT id FROM cpl_lead_evidence WHERE lead_id=$1", [lead.id])).rows,
+      ).toEqual([]);
+      await expect(
+        executor.query(
+          "INSERT INTO cpl_customers(id,organization_id,name,created_by_identity_id) VALUES($1,$2,'Forged',$3)",
+          [randomUUID(), request.organizationId, owner.identityId],
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    await admin.execute("ALTER TABLE cpl_lead_evidence NO FORCE ROW LEVEL SECURITY");
+    try {
+      await expect(verifyHostedDatabaseRole(web, "web")).rejects.toThrow(
+        "CPL_HOSTED_DATABASE_ROLE_REFUSED",
+      );
+      await expect(workflows.getLead({ ...request, leadId: lead.id })).rejects.toMatchObject({
+        code: "CPL_INTAKE_SCHEMA_UNSAFE",
+      });
+    } finally {
+      await admin.execute("ALTER TABLE cpl_lead_evidence FORCE ROW LEVEL SECURITY");
+    }
+    expect((await workflows.getLead({ ...request, leadId: lead.id })).version).toBe(2);
+  });
   it("suspends the bound owner's privilege if its later verified Google claims drift", async () => {
     await signIn("owner-subject", "changed@example.invalid", null);
     expect(

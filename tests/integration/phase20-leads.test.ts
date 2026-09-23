@@ -44,7 +44,7 @@ let authorization!: PersistentAuthorizationService;
 beforeAll(async () => {
   database = new PGliteDatabaseAdapter("memory://");
   const first = await migrateDatabase(database);
-  expect(first.applied.at(-1)).toBe("0026_cpl_hosted_workflow.sql");
+  expect(first.applied.at(-1)).toBe("0035_cpl_delivery_closeout.sql");
   expect((await migrateDatabase(database)).applied).toEqual([]);
   const firstSeed = await seedDatabase(database);
   const secondSeed = await seedDatabase(database);

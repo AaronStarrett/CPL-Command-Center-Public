@@ -23,6 +23,11 @@ import {
   GoogleOidcAdapter,
   CPL_HOSTED_SESSION_COOKIE,
   CPL_HOSTED_CSRF_COOKIE,
+  CPL_LOCAL_SESSION_COOKIE,
+  CPL_LOCAL_CSRF_COOKIE,
+  hasLocalDevelopmentConfiguration,
+  assertLocalDevelopmentRequest,
+  verifyLocalSessionCookie,
   type CplHostedSession,
 } from "@bea/security/hosted";
 
@@ -137,8 +142,18 @@ export function hostedAuthConfigurationStatus(
  * client or mutable tenant state is cached across Cloudflare Worker requests. */
 export async function withHostedRuntime<T>(
   operation: (runtime: CplHostedRuntime) => Promise<T>,
-  options: { readonly sessionRequest?: Request } = {},
+  options: { readonly sessionRequest?: Request; readonly request?: Request } = {},
 ): Promise<T> {
+  if (hasLocalDevelopmentConfiguration()) {
+    const request = options.request ?? options.sessionRequest;
+    if (
+      options.sessionRequest &&
+      !(await hostedCookie(CPL_HOSTED_SESSION_COOKIE, options.sessionRequest))
+    )
+      throw new CplHostedAuthenticationError();
+    const { withLocalDevelopmentRuntime } = await import("./local-development-auth");
+    return withLocalDevelopmentRuntime(operation, request);
+  }
   const configuration = readHostedAuthConfiguration();
   // Reject an impossible session before opening TLS/SCRAM or querying the DB.
   // A structurally valid cookie still receives every existing server-side check.
@@ -185,6 +200,14 @@ export async function withHostedRuntime<T>(
 }
 
 export async function hostedCookie(name: string, request?: Request): Promise<string | undefined> {
+  const local = hasLocalDevelopmentConfiguration();
+  const signed = local && name === CPL_HOSTED_SESSION_COOKIE;
+  if (local) {
+    if (!request) throw new CplHostedAuthenticationError("CPL_LOCAL_DEVELOPMENT_REFUSED", 503);
+    assertLocalDevelopmentRequest(request);
+    if (signed) name = CPL_LOCAL_SESSION_COOKIE;
+    else if (name === CPL_HOSTED_CSRF_COOKIE) name = CPL_LOCAL_CSRF_COOKIE;
+  }
   if (!request) {
     const { cookies } = await import("next/headers");
     const matches = (await cookies()).getAll(name);
@@ -194,7 +217,8 @@ export async function hostedCookie(name: string, request?: Request): Promise<str
     .split(";")
     .map((part) => part.trim())
     .filter((part) => part.startsWith(`${name}=`));
-  return matches.length === 1 ? matches[0]?.slice(name.length + 1) : undefined;
+  const value = matches.length === 1 ? matches[0]?.slice(name.length + 1) : undefined;
+  return signed ? verifyLocalSessionCookie(value) : value;
 }
 
 export async function requireHostedSession(

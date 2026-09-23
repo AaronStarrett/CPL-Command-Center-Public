@@ -1,7 +1,7 @@
-import { createHostedScheduledHandler } from "./cloudflare-scheduler.mjs";
+import { createHostedJobsDispatcher } from "./cloudflare-jobs-dispatcher.mjs";
 
 export default {
-  scheduled: createHostedScheduledHandler(),
+  scheduled: createHostedJobsDispatcher(),
   fetch() {
     return new Response("Not found", {
       status: 404,

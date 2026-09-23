@@ -17,6 +17,7 @@ import { assertUnredirectedPath, verifyExport } from "./publication-export.mjs";
 import { prohibitedRepositoryPathReason } from "./repository-data-policy.mjs";
 import { writeHostingNotices } from "./hosting-notices.mjs";
 import { prepareHostedWorkspaceAsset } from "./hosting-static-shell.mjs";
+import { assertNoLocalDevelopmentConfiguration } from "./local-development-policy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicOrigin = "https://github.com/AaronStarrett/CPL-Command-Center-Public.git";
@@ -129,6 +130,7 @@ function executable(packageName) {
 }
 
 export function hostingEnvironment(repositoryRoot, source = process.env) {
+  assertNoLocalDevelopmentConfiguration(source);
   const environment = createSafeEnvironment(repositoryRoot, source);
   const inheritedPath = environment.Path ?? environment.PATH ?? "";
   delete environment.Path;
@@ -189,6 +191,7 @@ export function deploymentArguments({ target, commit, build, openNextConfigurati
 }
 
 export function runCloudflareHosting(arguments_ = process.argv.slice(2)) {
+  assertNoLocalDevelopmentConfiguration();
   const options = parseHostingArguments(arguments_);
   const boundary = assertRepositoryBoundary({ cwd: root, target: root });
   prepareDirectories(root);

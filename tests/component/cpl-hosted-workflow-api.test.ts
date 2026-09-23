@@ -9,6 +9,10 @@ const stubs = vi.hoisted(() => ({
   listJobs: vi.fn(),
   workspace: vi.fn(),
   createLead: vi.fn(),
+  updateLead: vi.fn(),
+  evidence: vi.fn(),
+  directory: vi.fn(),
+  createDirectory: vi.fn(),
   getLead: vi.fn(),
   getProposal: vi.fn(),
   createProposal: vi.fn(),
@@ -39,6 +43,10 @@ vi.mock("@bea/database/hosted", () => ({
     listJobs = stubs.listJobs;
     readWorkspace = stubs.workspace;
     createLead = stubs.createLead;
+    updateLead = stubs.updateLead;
+    appendLeadEvidence = stubs.evidence;
+    getIntakeDirectory = stubs.directory;
+    createDirectoryEntry = stubs.createDirectory;
     getLead = stubs.getLead;
     getProposalDraft = stubs.getProposal;
     createProposalDraft = stubs.createProposal;
@@ -46,7 +54,7 @@ vi.mock("@bea/database/hosted", () => ({
     downloadProposal = stubs.download;
   },
 }));
-import { GET, POST } from "../../apps/web/app/api/cpl/[...path]/route";
+import { GET, POST, PATCH } from "../../apps/web/app/api/cpl/[...path]/route";
 const selected = { sessionToken: "server-session", organizationId: "server-selected-organization" };
 function request(path: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(`https://cpl.example.invalid/api/cpl/${path}`, {
@@ -78,6 +86,120 @@ describe("hosted workflow HTTP boundary", () => {
     stubs.workspace.mockResolvedValue({ leads: [], proposals: [], jobs: [] });
     stubs.organizations.mockResolvedValue([]);
     stubs.createLead.mockResolvedValue({ id: "lead-one" });
+    stubs.updateLead.mockResolvedValue({ id: "lead-one", version: 2 });
+    stubs.evidence.mockResolvedValue({ id: "lead-one", version: 3 });
+    stubs.directory.mockResolvedValue({ customers: [], contacts: [], sites: [], members: [] });
+    stubs.createDirectory.mockResolvedValue({ id: "customer-one", name: "Fictional company" });
+  });
+  it("captures incomplete structured intake without inventing contact data", async () => {
+    const response = await POST(
+      request("leads", {
+        title: "Phone inquiry",
+        sourceType: "phone",
+        sourceReference: "Caller note",
+        idempotencyKey: "capture-1",
+      }),
+      context("leads"),
+    );
+    expect(response.status).toBe(201);
+    expect(stubs.createLead).toHaveBeenCalledWith({
+      ...selected,
+      title: "Phone inquiry",
+      sourceType: "phone",
+      sourceReference: "Caller note",
+      idempotencyKey: "capture-1",
+    });
+  });
+  it("binds optimistic corrections to the displayed server-selected tenant", async () => {
+    const response = await PATCH(
+      request("leads/id", { expectedVersion: 1, nextAction: "Call customer" }),
+      context("leads", "id"),
+    );
+    expect(response.status).toBe(200);
+    expect(stubs.updateLead).toHaveBeenCalledWith({
+      ...selected,
+      leadId: "id",
+      expectedVersion: 1,
+      nextAction: "Call customer",
+    });
+    const rejected = await PATCH(
+      request("leads/id", { expectedVersion: 1, organizationId: "forged" }),
+      context("leads", "id"),
+    );
+    expect(rejected.status).toBe(400);
+    expect(stubs.updateLead).toHaveBeenCalledTimes(1);
+  });
+  it("rejects correction without version, with stale organization, or without CSRF", async () => {
+    expect(
+      (await PATCH(request("leads/id", { nextAction: "Call" }), context("leads", "id"))).status,
+    ).toBe(400);
+    expect(
+      (
+        await PATCH(
+          request("leads/id", { expectedVersion: 1 }, { "X-CPL-Organization": "stale" }),
+          context("leads", "id"),
+        )
+      ).status,
+    ).toBe(409);
+    stubs.mutation.mockRejectedValue({ code: "CPL_CSRF_REJECTED" });
+    expect(
+      (
+        await PATCH(
+          request("leads/id", { expectedVersion: 1, status: "ready_for_proposal" }),
+          context("leads", "id"),
+        )
+      ).status,
+    ).toBe(403);
+    expect(stubs.updateLead).not.toHaveBeenCalled();
+  });
+  it("exposes controlled lead conflict codes without exception messages", async () => {
+    stubs.updateLead.mockRejectedValue({
+      code: "CPL_LEAD_VERSION_CONFLICT",
+      message: "private SQL",
+    });
+    const response = await PATCH(
+      request("leads/id", { expectedVersion: 1, notes: "Correction" }),
+      context("leads", "id"),
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ code: "CPL_LEAD_VERSION_CONFLICT" });
+  });
+  it("appends evidence through a bounded explicit endpoint with server authority", async () => {
+    const response = await POST(
+      request("leads/id/evidence", {
+        expectedVersion: 2,
+        idempotencyKey: "evidence-1",
+        label: "Original email",
+        reference: "message:fictional",
+        note: "Untrusted source text",
+      }),
+      context("leads", "id", "evidence"),
+    );
+    expect(response.status).toBe(201);
+    expect(stubs.evidence).toHaveBeenCalledWith({
+      ...selected,
+      leadId: "id",
+      expectedVersion: 2,
+      idempotencyKey: "evidence-1",
+      label: "Original email",
+      reference: "message:fictional",
+      note: "Untrusted source text",
+    });
+  });
+  it("reads only the selected tenant directory and refuses role/provenance spoofing", async () => {
+    expect((await GET(request("directory"), context("directory"))).status).toBe(200);
+    expect(stubs.directory).toHaveBeenCalledWith(selected);
+    const result = await POST(
+      request("directory", {
+        kind: "customer",
+        name: "Fictional company",
+        actorIdentityId: "forged",
+        idempotencyKey: "directory-1",
+      }),
+      context("directory"),
+    );
+    expect(result.status).toBe(400);
+    expect(stubs.createDirectory).not.toHaveBeenCalled();
   });
   it("rejects a body-supplied tenant instead of selecting it", async () => {
     const result = await POST(
@@ -107,7 +229,6 @@ describe("hosted workflow HTTP boundary", () => {
       ...selected,
       title: "Fictional lead",
       contactName: "Example",
-      contactEmail: undefined,
       details: "Manual request",
       idempotencyKey: "retry",
     });

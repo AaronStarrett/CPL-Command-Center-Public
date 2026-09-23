@@ -48,6 +48,29 @@ test("publication excludes private history, customer assets, historical reports,
     assert.notEqual(publicationPathDecision(relative), "include", relative);
 });
 
+test("publication includes reviewed product guides without exporting acceptance records or uploads", () => {
+  for (const relative of [
+    "OPEN-CPL-COMMAND-CENTER.md",
+    "docs/PRODUCT_FEATURE_MAP.md",
+    "docs/LOCAL_PHASE2_TESTING.md",
+    "docs/LOCAL_PHASE3_TESTING.md",
+    "docs/LOCAL_PHASE4_TESTING.md",
+    "docs/DEFERRED_HOSTING.md",
+  ])
+    assert.equal(publicationPathDecision(relative), "include", relative);
+  for (const relative of [
+    "docs/PROJECT_STATE.md",
+    "docs/PRODUCT_PHASE3_CHECKPOINTS.md",
+    "docs/PUBLICATION_REVIEW.md",
+    "docs/LOCAL_PHASE5_TESTING.md",
+    ".data/evidence/original.png",
+    ".data/local-development/credentials.dpapi",
+    "product-phase4-20260923/acceptance.json",
+    "packages/artifacts/generated/customer-report.pdf",
+  ])
+    assert.notEqual(publicationPathDecision(relative), "include", relative);
+});
+
 test("private content finding reveals only path and category", () => {
   const fixture =
     'professionalSummary: "Confidential synthetic profile statement", communicationPreferences: ["Private synthetic preference text"]';

@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
+import { verifyHostedDatabaseRole } from "./hosted-database-role.js";
 
 export const CPL_MODULE_KEYS = [
   "intake-job-tracker",
@@ -26,6 +27,24 @@ export type CplTenantRole = (typeof CPL_TENANT_ROLES)[number];
 export type CplTenantPermission =
   | "records:read"
   | "records:write"
+  | "leads:review"
+  | "commercial:write"
+  | "commercial:review"
+  | "commercial:award"
+  | "projects:create"
+  | "execution:plan"
+  | "execution:field"
+  | "field:write"
+  | "field:templates"
+  | "reports:write"
+  | "reports:review"
+  | "reports:configure"
+  | "automation:configure"
+  | "automation:operate"
+  | "delivery:write"
+  | "delivery:confirm"
+  | "delivery:configure"
+  | "delivery:override"
   | "settings:read"
   | "settings:write"
   | "members:manage"
@@ -55,10 +74,17 @@ export interface CplTenantAccess {
   readonly identityId: string;
   readonly role: CplTenantRole;
   readonly membershipVersion: number;
+  /** Set only by the fenced SQL worker composition, never accepted from HTTP. */
+  readonly automationExecutionId?: string;
 }
 export interface CplTenantRequest {
   readonly sessionToken: string;
   readonly organizationId: string;
+}
+export interface CplAutomationTransactionRequest {
+  readonly organizationId: string;
+  readonly executionId: string;
+  readonly leaseToken: string;
 }
 export interface CplOrganization {
   readonly id: string;
@@ -76,11 +102,32 @@ const administratorRoles: readonly CplTenantRole[] = ["owner", "admin"];
 const permissionRoles: Readonly<Record<CplTenantPermission, readonly CplTenantRole[]>> = {
   "records:read": CPL_TENANT_ROLES,
   "records:write": ["owner", "admin", "manager", "member", "field-user"],
+  "leads:review": ["owner", "admin", "manager", "reviewer"],
+  "commercial:write": ["owner", "admin", "manager", "member"],
+  "commercial:review": ["owner", "admin", "manager", "reviewer"],
+  "commercial:award": ["owner", "admin", "manager"],
+  "projects:create": ["owner", "admin", "manager"],
+  "execution:plan": ["owner", "admin", "manager", "member"],
+  "execution:field": ["owner", "admin", "manager", "member", "field-user"],
+  "field:write": ["owner", "admin", "manager", "member", "field-user"],
+  "field:templates": ["owner", "admin", "manager"],
+  "reports:write": ["owner", "admin", "manager", "member"],
+  "reports:review": ["owner", "admin", "manager", "reviewer"],
+  "reports:configure": ["owner", "admin", "manager"],
+  "automation:configure": ["owner", "admin"],
+  "automation:operate": ["owner", "admin", "manager"],
+  "delivery:write": ["owner", "admin", "manager", "member"],
+  "delivery:confirm": ["owner", "admin", "manager"],
+  "delivery:configure": ["owner", "admin"],
+  "delivery:override": ["owner", "admin", "manager"],
   "settings:read": CPL_TENANT_ROLES,
   "settings:write": administratorRoles,
   "members:manage": administratorRoles,
   "jobs:run": ["owner", "admin", "manager"],
 };
+export function cplTenantRoleAllows(role: CplTenantRole, permission: CplTenantPermission): boolean {
+  return permissionRoles[permission]?.includes(role) === true;
+}
 const namespaceKinds: readonly string[] = [
   "objects",
   "vectors",
@@ -328,6 +375,61 @@ export class SqlCplTenantRepository {
   ): Promise<T> {
     return this.authenticated(request, permission, operation, moduleKey(module));
   }
+  /** Organization configuration spans independently entitled modules; action
+   * callers must additionally require the modules they actually read or change. */
+  async withOrganizationTransaction<T>(
+    request: CplTenantRequest,
+    permission: CplTenantPermission,
+    operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
+  ): Promise<T> {
+    return this.authenticated(request, permission, operation);
+  }
+  /** Worker-only composition: no session is issued or impersonated. A SQL function
+   * locks live authority using an active queue fence; each delayed action gets its
+   * own fresh transaction, exact configuration check and held authorization. */
+  async withAutomationTransaction<T>(
+    request: CplAutomationTransactionRequest,
+    permission: CplTenantPermission,
+    modules: readonly CplModuleKey[],
+    operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
+  ): Promise<T> {
+    const organizationId = uuid(request.organizationId),
+      executionId = uuid(request.executionId),
+      lease = uuid(request.leaseToken);
+    if (!Array.isArray(modules) || modules.length > CPL_MODULE_KEYS.length)
+      fail("CPL_UNKNOWN_MODULE");
+    const keys = [...new Set(modules.map(moduleKey))];
+    return this.database.transaction(async (executor) => {
+      await verifyHostedDatabaseRole(this.database, "worker", executor);
+      const found = await executor.query<{ access: CplTenantAccess }>(
+        "SELECT cpl_automation_lock_authority($1,$2,$3) AS access",
+        [organizationId, executionId, lease],
+      );
+      const access = found.rows[0]?.access;
+      if (
+        !access ||
+        access.organizationId !== organizationId ||
+        !cplTenantRoleAllows(access.role, permission)
+      )
+        fail("CPL_AUTOMATION_AUTHORIZATION_REVOKED");
+      // The authority function already holds all entitlement rows FOR SHARE.
+      for (const key of keys) {
+        const rows = await executor.query<Row>(
+          "SELECT enabled,usage_limit FROM cpl_module_entitlements WHERE organization_id=$1 AND module_key=$2",
+          [organizationId, key],
+        );
+        if (rows.rows[0]?.enabled !== true || Number(rows.rows[0]?.usage_limit ?? 1) === 0)
+          fail("CPL_MODULE_DISABLED");
+      }
+      const result = await operation(executor, { ...access, automationExecutionId: executionId });
+      const fence = await executor.query(
+        "SELECT id FROM cpl_workflow_jobs WHERE organization_id=$1 AND id=$2 AND status='running' AND lease_token=$3 AND lease_expires_at>clock_timestamp()",
+        [organizationId, executionId, lease],
+      );
+      if (!fence.rows[0]) fail("CPL_JOB_LEASE_LOST");
+      return result;
+    });
+  }
   /** Trusted server composition for a bounded aggregate read. Every requested
    * module is locked and authorized before data is read. Session, identity,
    * membership and organization locks remain held through COMMIT; wall-clock
@@ -436,7 +538,7 @@ export class SqlCplTenantRepository {
     });
   }
   /** Initial production slice: an explicitly provisioned owner with recent real
-   * MFA creates an empty organization and enables only the two released modules. */
+   * MFA creates an empty organization and enables only the three released modules. */
   async createEnabledOrganization(
     sessionToken: string,
     input: { readonly slug: string; readonly displayName: string },
@@ -457,7 +559,11 @@ export class SqlCplTenantRepository {
         [id, identityId],
       );
       for (const key of CPL_MODULE_KEYS) {
-        const enabled = key === "intake-job-tracker" || key === "proposal-builder";
+        const enabled =
+          key === "intake-job-tracker" ||
+          key === "proposal-builder" ||
+          key === "award-to-project-launcher" ||
+          key === "field-report-assembler";
         await executor.query(
           "INSERT INTO cpl_module_entitlements (organization_id,module_key,enabled,usage_limit) VALUES ($1,$2,$3,$4)",
           [id, key, enabled, enabled ? null : 0],

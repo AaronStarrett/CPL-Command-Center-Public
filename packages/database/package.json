@@ -29,6 +29,7 @@
     "demo:reset": "node ../../scripts/run-guarded.mjs tsx src/cli/database-command.ts demo-reset"
   },
   "dependencies": {
+    "@bea/artifacts": "workspace:*",
     "@bea/automation": "workspace:*",
     "@bea/ai": "workspace:*",
     "@bea/config": "workspace:*",

@@ -20,7 +20,7 @@ import {
 
 const OWNER = DEMO_PERSONAS[0]!.id;
 const OPERATIONS = DEMO_PERSONAS[2]!.id;
-const MIGRATION_0026 = "0026_cpl_hosted_workflow.sql";
+const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
 
 function inspectPhase34aPostgresUrl(value: string | undefined) {
   const url = value?.trim() ?? "";
@@ -87,8 +87,8 @@ describePostgres("Phase 3.4A real PostgreSQL guided story", () => {
       statement_timeout: 15_000,
     });
     const migrated = await migrateDatabase(database);
-    expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(MIGRATION_0026);
-    await expect(verifyMigrations(database)).resolves.toMatchObject({ current: MIGRATION_0026 });
+    expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(LATEST_MIGRATION);
+    await expect(verifyMigrations(database)).resolves.toMatchObject({ current: LATEST_MIGRATION });
     await seedDatabase(database);
     await seedDatabase(database);
     pipeline = createInspectionReportPipeline(database, "demo", { processInline: true });
@@ -121,7 +121,7 @@ describePostgres("Phase 3.4A real PostgreSQL guided story", () => {
         (row) => row.id === "0023_phase33a_commercial_integrity_and_override_cycles.sql",
       ),
     ).toBe(true);
-    expect(applied.rows.at(-1)?.id).toBe(MIGRATION_0026);
+    expect(applied.rows.at(-1)?.id).toBe(LATEST_MIGRATION);
   });
 
   it("creates one active run when two independent connections race start", async () => {

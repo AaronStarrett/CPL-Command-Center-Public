@@ -219,7 +219,7 @@ beforeAll(async () => {
   expect(process.env.MICROSOFT_GRAPH_CLIENT_SECRET ?? "").toBe("");
   database = new PGliteDatabaseAdapter("memory://");
   const migrated = await migrateDatabase(database);
-  expect(migrated.applied.at(-1)).toBe("0026_cpl_hosted_workflow.sql");
+  expect(migrated.applied.at(-1)).toBe("0035_cpl_delivery_closeout.sql");
   await seedDatabase(database);
   pipeline = createInspectionReportPipeline(database, "demo", {
     processInline: true,

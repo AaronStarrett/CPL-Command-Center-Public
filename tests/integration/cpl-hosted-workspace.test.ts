@@ -36,7 +36,7 @@ beforeAll(async () => {
   });
   workflows = new SqlCplWorkflowRepository(database, tenants);
   await database.execute(
-    "CREATE ROLE cpl_workspace_test NOLOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA public TO cpl_workspace_test; GRANT SELECT,UPDATE ON cpl_sessions,cpl_identities,cpl_memberships,cpl_organizations,cpl_module_entitlements TO cpl_workspace_test; GRANT SELECT ON cpl_workflow_leads,cpl_proposal_drafts,cpl_workflow_jobs,cpl_runtime_roles TO cpl_workspace_test;",
+    "CREATE ROLE cpl_workspace_test NOLOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA public TO cpl_workspace_test; GRANT SELECT,UPDATE ON cpl_sessions,cpl_identities,cpl_memberships,cpl_organizations,cpl_module_entitlements TO cpl_workspace_test; GRANT SELECT ON cpl_workflow_leads,cpl_proposal_drafts,cpl_workflow_jobs,cpl_runtime_roles,cpl_customers,cpl_contacts,cpl_sites,cpl_lead_evidence,cpl_lead_review_events TO cpl_workspace_test;",
   );
 }, 60_000);
 afterAll(async () => {
@@ -58,7 +58,16 @@ async function provision() {
     title: "Synthetic lead",
     contactName: "Example",
     details: "Local test",
+    requestedService: "Synthetic inspection",
+    assignedMemberIdentityId: session.identityId,
+    nextAction: "Prepare draft",
     idempotencyKey: randomUUID(),
+  });
+  await workflows.updateLead({
+    ...request,
+    leadId: lead.id,
+    expectedVersion: lead.version,
+    status: "ready_for_proposal",
   });
   const proposal = await workflows.createProposalDraft({
     ...request,
@@ -82,6 +91,14 @@ async function individual(request: CplTenantRequest) {
     leads: await workflows.listLeads(request),
     proposals: await workflows.listProposalDrafts(request),
     jobs: await workflows.listJobs(request),
+    intakeDirectory: await workflows.getIntakeDirectory(request),
+    permissions: {
+      canCreateLead: true,
+      canEditLead: true,
+      canReviewLead: true,
+      canCreateProposal: true,
+      canEditProposal: true,
+    },
   };
 }
 async function assertCleanContext() {

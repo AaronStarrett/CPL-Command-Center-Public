@@ -6,7 +6,7 @@ export const OWNER_ACCEPTANCE_PACKAGE_VERSION = "phase-2.3";
 export const CANONICAL_EXTRACTION_PATH = "C:\\CPL-Dev\\BEA-Automation-Command-Center";
 export const START_LAUNCHER = "Start-BEA-Owner-Acceptance.cmd";
 export const STOP_LAUNCHER = "Stop-BEA-Owner-Acceptance.cmd";
-export const EXPECTED_MIGRATION_LEVEL = "0026_cpl_hosted_workflow";
+export const EXPECTED_MIGRATION_LEVEL = "0030_cpl_commercial_spine";
 
 export const OWNER_ACCEPTANCE_DISK_GUIDANCE = Object.freeze({
   minimumFreeBytes: 5 * 1024 * 1024 * 1024,

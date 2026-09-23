@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { DirectoryReadCompatibilityPlugin } from "./lib/webpack-directory-read";
 import { HostedDependencyInputsPlugin } from "./lib/webpack-dependency-inputs";
 import path from "node:path";
+import { assertNoLocalDevelopmentConfiguration } from "../../scripts/local-development-policy.mjs";
 
 export function permissionsPolicyForEnvironment(browserMediaTestMode: boolean): string {
   return browserMediaTestMode
@@ -37,7 +38,7 @@ const permissionsPolicy = permissionsPolicyForEnvironment(
 );
 const previewDistDirectory = previewDistDirectoryForEnvironment(process.env);
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   ...(previewDistDirectory ? { distDir: previewDistDirectory } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
@@ -115,4 +116,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default function configurationForPhase(phase: string): NextConfig {
+  if (
+    phase === "phase-production-build" ||
+    phase === "phase-production-server" ||
+    process.env.NODE_ENV === "production" ||
+    process.env.CPL_HOSTED_BUILD === "true"
+  )
+    assertNoLocalDevelopmentConfiguration(process.env);
+  return nextConfig;
+}

@@ -22,7 +22,7 @@ const SALES = DEMO_PERSONAS[1].id;
 const READY_LEAD = "a1000000-0000-4000-8000-000000000003";
 const MOISTURE_LEAD = "a1000000-0000-4000-8000-000000000005";
 const MIGRATION_0023 = "0023_phase33a_commercial_integrity_and_override_cycles.sql";
-const MIGRATION_0026 = "0026_cpl_hosted_workflow.sql";
+const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
 const COMPANY_ID = "90000000-0000-4000-8000-000000000001";
 const CONTACT_ID = "91000000-0000-4000-8000-000000000001";
 
@@ -177,8 +177,8 @@ describePostgres("Phase 3.3A real PostgreSQL commercial concurrency", () => {
       statement_timeout: 15_000,
     });
     const migrated = await migrateDatabase(database);
-    expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(MIGRATION_0026);
-    await expect(verifyMigrations(database)).resolves.toMatchObject({ current: MIGRATION_0026 });
+    expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(LATEST_MIGRATION);
+    await expect(verifyMigrations(database)).resolves.toMatchObject({ current: LATEST_MIGRATION });
     await seedDatabase(database);
   }, 120_000);
 
@@ -196,7 +196,7 @@ describePostgres("Phase 3.3A real PostgreSQL commercial concurrency", () => {
       applied.rows.some((row) => row.id === "0022_phase33a_service_catalog_and_proposals.sql"),
     ).toBe(true);
     expect(applied.rows.some((row) => row.id === MIGRATION_0023)).toBe(true);
-    expect(applied.rows.at(-1)?.id).toBe(MIGRATION_0026);
+    expect(applied.rows.at(-1)?.id).toBe(LATEST_MIGRATION);
     expect(SYSTEM_SEED_ID).toBe("cpl-system-v1");
   });
 

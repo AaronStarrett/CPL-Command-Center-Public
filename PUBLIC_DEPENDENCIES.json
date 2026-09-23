@@ -682,6 +682,12 @@
       "notices": []
     },
     {
+      "name": "@neondatabase/serverless",
+      "version": "1.1.0",
+      "license": "MIT",
+      "notices": ["LICENSE"]
+    },
+    {
       "name": "@next/env",
       "version": "16.3.5",
       "license": "MIT",

@@ -49,6 +49,15 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0024_phase34a_guided_meridian_experience.sql",
       "0025_cpl_tenant_foundation.sql",
       "0026_cpl_hosted_workflow.sql",
+      "0027_cpl_hosted_jobs_http_v1.sql",
+      "0028_cpl_session_http_reads.sql",
+      "0029_cpl_structured_intake.sql",
+      "0030_cpl_commercial_spine.sql",
+      "0031_cpl_project_execution.sql",
+      "0032_cpl_field_records.sql",
+      "0033_cpl_reviewed_reports.sql",
+      "0034_cpl_automation_recipes.sql",
+      "0035_cpl_delivery_closeout.sql",
     ]);
     expect((await migrateDatabase(database)).alreadyApplied).toEqual([
       "0001_phase0_foundation.sql",
@@ -77,6 +86,15 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0024_phase34a_guided_meridian_experience.sql",
       "0025_cpl_tenant_foundation.sql",
       "0026_cpl_hosted_workflow.sql",
+      "0027_cpl_hosted_jobs_http_v1.sql",
+      "0028_cpl_session_http_reads.sql",
+      "0029_cpl_structured_intake.sql",
+      "0030_cpl_commercial_spine.sql",
+      "0031_cpl_project_execution.sql",
+      "0032_cpl_field_records.sql",
+      "0033_cpl_reviewed_reports.sql",
+      "0034_cpl_automation_recipes.sql",
+      "0035_cpl_delivery_closeout.sql",
     ]);
     await seedDatabase(database);
     await seedDatabase(database);

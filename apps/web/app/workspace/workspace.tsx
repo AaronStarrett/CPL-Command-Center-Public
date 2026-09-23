@@ -9,10 +9,26 @@ import type {
 import type { CplWorkflowLead, CplProposalDraft, CplWorkflowJob } from "@bea/database/hosted";
 import { AppLogo } from "@/components/app-logo";
 import styles from "./workspace.module.css";
+import { CommercialWorkspace } from "./commercial-workspace";
+import { ActionCenter } from "./action-center";
+import type { CplActionTarget } from "@bea/domain/cpl-automation";
+import type { WorkspaceRecordIntent } from "./phase4-ui";
+import { uploadFieldPhoto, FieldUploadError, type FieldUploadInput } from "./field-upload";
+import type { ProposalIntent } from "./commercial-ui";
+import { executionConflicts } from "./commercial-ui";
+import { useUnsavedNavigation } from "./commercial-navigation";
+import {
+  LeadWorkspace,
+  type IntakeDirectory,
+  type IntakePermissions,
+  type LeadInput,
+} from "./lead-workspace";
 
 type Organization = { id: string; displayName: string; slug: string };
 type Session = {
   authenticated: boolean;
+  authenticationMode?: "local-development" | "google";
+  synthetic?: boolean;
   identity?: { id: string; displayName: string; email: string };
   session?: {
     expiresAt: string;
@@ -28,7 +44,17 @@ type WorkspaceData = {
   leads: CplWorkflowLead[];
   proposals: CplProposalDraft[];
   jobs: CplWorkflowJob[];
+  permissions?: IntakePermissions;
+  intakeDirectory?: IntakeDirectory;
 };
+const noPermissions: IntakePermissions = {
+  canCreateLead: false,
+  canEditLead: false,
+  canReviewLead: false,
+  canCreateProposal: false,
+  canEditProposal: false,
+};
+const emptyDirectory: IntakeDirectory = { customers: [], contacts: [], sites: [], members: [] };
 const emptyData: WorkspaceData = {
   organizations: [],
   currentOrganizationId: null,
@@ -49,19 +75,60 @@ const messages: Record<string, string> = {
     "This draft changed in another session. Refresh before editing again.",
   CPL_RECENT_MFA_REQUIRED: "Verify your passkey before changing organization settings.",
   CPL_PROPOSAL_NOT_READY:
-    "This version is still being prepared. The background runner checks every 15 minutes.",
-  CPL_VERSION_CONFLICT: "This draft changed in another session. Refresh before editing again.",
+    "This version is still being prepared. Refresh its status after background preparation finishes.",
+  CPL_VERSION_CONFLICT:
+    "This record changed in another session. Refresh and review the latest version before saving again.",
   CPL_INVALID_INPUT: "Check the required fields and try again.",
   CPL_FRESH_AUTHENTICATION_REQUIRED: "Sign out and sign in again to enroll your first passkey.",
   CPL_ORGANIZATION_CONTEXT_CHANGED:
     "The selected organization changed in another tab. Review the current organization before entering records again.",
   CPL_ORGANIZATION_SLUG_TAKEN: "That organization address is already in use. Choose another.",
+  CPL_LEAD_VERSION_CONFLICT:
+    "This lead changed in another session. Your entries are kept. Refresh, then review the latest version before saving again.",
+  CPL_LEAD_NOT_READY:
+    "Resolve the lead’s missing information and conflicts before marking it ready for proposal.",
+  CPL_LEAD_REVIEW_REQUIRED: "A reviewer must mark the lead ready before a proposal can be created.",
+  CPL_DUPLICATE_REVIEW_CONFLICT:
+    "The possible duplicate changed. Refresh the lead and review the match again.",
+  CPL_REFERENCE_CONFLICT:
+    "The selected contact or site belongs to a different customer. Review the linked records.",
+  CPL_ASSIGNEE_UNAVAILABLE:
+    "That member is no longer available. Refresh and choose an active member.",
+  CPL_RECORD_NOT_FOUND:
+    "This record is not available in the current organization. Refresh the workspace.",
+  CPL_PROPOSAL_EXISTS:
+    "This lead already has a proposal. Open it, or explicitly choose to create an additional proposal.",
+  CPL_APPROVAL_REQUIRED: "Approve the saved proposal version before continuing this handoff.",
+  CPL_AWARD_REQUIRED: "Record an award before creating the linked project.",
+  CPL_INVALID_STATE:
+    "This action is not available in the proposal’s current state. Refresh saved state and review the latest version.",
+  CPL_COMMERCIAL_VERSION_CONFLICT:
+    "The proposal changed in another session. Your entries are kept. Refresh saved state and review the latest version before saving.",
+  CPL_BRANDING_REQUIRED:
+    "Configure the company’s artifact branding before submitting the proposal for approval.",
+  CPL_MODULE_DISABLED: "This workflow is not enabled for the current company.",
+  CPL_PROPOSAL_ALREADY_EXISTS:
+    "This lead already has a structured proposal. Open it, or explicitly choose to create an additional proposal.",
+  CPL_COMMERCIAL_NOT_READY:
+    "Complete the saved scope, pricing and company artifact branding before review. Your current entries are kept.",
+  CPL_COMMERCIAL_STATE_CONFLICT:
+    "The proposal’s state changed. Refresh saved state before attempting another action.",
+  CPL_AWARD_TOTAL_MISMATCH:
+    "The award amount and currency must match the approved proposal. Open and approve a revision to change the agreed price.",
+  CPL_APPROVED_VERSION_REQUIRED: "This action requires the currently approved proposal version.",
+  CPL_PROPOSAL_NOT_APPROVED: "Approve the saved proposal before creating its final customer PDF.",
+  CPL_PROPOSAL_PDF_UNSUPPORTED_CHARACTER:
+    "The PDF renderer cannot represent a character in this version. Review the document text before trying again.",
+  CPL_PROPOSAL_PDF_LOGO_INVALID:
+    "The saved company logo could not be rendered. Review the approved document’s logo before retrying.",
+  CPL_SESSION_REQUIRED: "Your session expired. Sign in again to continue.",
 };
 
 class WorkspaceRequestError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly conflicts: ReturnType<typeof executionConflicts> = [],
   ) {
     super(message);
   }
@@ -71,12 +138,14 @@ async function workspaceRequest<T>(
   path: string,
   body?: unknown,
   mutationHeaders?: Record<string, string>,
+  method?: "POST" | "PATCH",
+  readHeaders?: Record<string, string>,
 ): Promise<T> {
   const response = await fetch(path, {
-    method: body === undefined ? "GET" : "POST",
+    method: body === undefined ? "GET" : (method ?? "POST"),
     cache: "no-store",
     credentials: "same-origin",
-    headers: body === undefined ? undefined : mutationHeaders,
+    headers: body === undefined ? readHeaders : mutationHeaders,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const value = await response.json();
@@ -87,6 +156,7 @@ async function workspaceRequest<T>(
         (response.status === 503
           ? "The workspace is temporarily unavailable. Try again shortly."
           : "The request could not be completed. Refresh and try again."),
+      value.code === "CPL_EXECUTION_SCHEDULE_CONFLICT" ? executionConflicts(value.conflicts) : [],
     );
   return value as T;
 }
@@ -94,7 +164,14 @@ async function workspaceRequest<T>(
 export function Workspace() {
   const [session, setSession] = useState<Session | null>(null);
   const [data, setData] = useState<WorkspaceData>(emptyData);
-  const [view, setView] = useState<"leads" | "proposals" | "settings">("leads");
+  const [view, setView] = useState<"actions" | "leads" | "commercial" | "proposals" | "settings">(
+    "actions",
+  );
+  const [commercialIntent, setCommercialIntent] = useState<ProposalIntent | undefined>();
+  const [recordIntent, setRecordIntent] = useState<WorkspaceRecordIntent | undefined>();
+  const recordNonce = useRef(0);
+  const [commercialDirty, setCommercialDirty] = useState(false);
+  const commercialNavigation = useUnsavedNavigation(commercialDirty);
   const [leadId, setLeadId] = useState("");
   const [proposalId, setProposalId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -109,8 +186,11 @@ export function Workspace() {
   const displayedOrganization = useRef<string | null>(null);
   const createAttempts = useRef<Record<string, { payload: string; key: string }>>({});
   const organization = data.organizations.find((item) => item.id === data.currentOrganizationId);
-  const selectedLead = data.leads.find((item) => item.id === leadId);
   const selectedProposal = data.proposals.find((item) => item.id === proposalId);
+  const proposalLead = data.leads.find((item) => item.id === leadId);
+  const localDevelopment =
+    session?.authenticationMode === "local-development" && session.synthetic === true;
+  const permissions = data.permissions ?? noPermissions;
   const cancelRefresh = useCallback(() => {
     refreshGeneration.current++;
   }, []);
@@ -122,16 +202,24 @@ export function Workspace() {
     setEditVersion(null);
     setDraftTitle("");
     setDraftContent("");
+    setCommercialIntent(undefined);
+    setRecordIntent(undefined);
+    setCommercialDirty(false);
     createAttempts.current = {};
   }, []);
 
   const request = useCallback(
-    <T,>(path: string, body?: unknown): Promise<T> =>
-      workspaceRequest<T>(path, body, {
-        "Content-Type": "application/json",
-        "X-CPL-CSRF": session?.csrfToken ?? "",
-        "X-CPL-Organization": data.currentOrganizationId ?? "",
-      }),
+    <T,>(path: string, body?: unknown, method?: "POST" | "PATCH"): Promise<T> =>
+      workspaceRequest<T>(
+        path,
+        body,
+        {
+          "Content-Type": "application/json",
+          "X-CPL-CSRF": session?.csrfToken ?? "",
+          "X-CPL-Organization": data.currentOrganizationId ?? "",
+        },
+        method,
+      ),
     [session?.csrfToken, data.currentOrganizationId],
   );
   const refresh = useCallback(async () => {
@@ -168,22 +256,27 @@ export function Workspace() {
     createAttempts.current[kind] = { payload, key };
     return key;
   }
-  function clearSession() {
-    setSession({ authenticated: false });
+  function clearSession(descriptor?: Session) {
+    setSession((previous) => ({
+      authenticated: false,
+      authenticationMode: descriptor?.authenticationMode ?? previous?.authenticationMode,
+      synthetic: descriptor?.synthetic ?? previous?.synthetic,
+    }));
     setData(emptyData);
     displayedOrganization.current = null;
     resetRecords();
     setCreateOrganization(false);
-    setView("leads");
+    setView("actions");
   }
   async function action(operation: () => Promise<void>) {
-    if (busy) return;
+    if (busy) return false;
     refreshGeneration.current++;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await operation();
+      return true;
     } catch (e) {
       if (e instanceof WorkspaceRequestError && e.code === "CPL_ORGANIZATION_CONTEXT_CHANGED") {
         resetRecords();
@@ -196,17 +289,22 @@ export function Workspace() {
         // A denial may mean expired cookies. Check once without retrying the mutation.
         const current = await workspaceRequest<Session>("/api/auth/session").catch(() => null);
         if (current?.authenticated === false) {
-          clearSession();
+          clearSession(current);
           setError(messages.CPL_AUTHENTICATION_REQUIRED!);
-          return;
+          return false;
         }
       }
       setError(e instanceof Error ? e.message : "The request could not be completed.");
+      return false;
     } finally {
       setBusy(false);
     }
   }
   async function passkey() {
+    if (localDevelopment) {
+      await developmentSignIn();
+      return;
+    }
     await action(async () => {
       if (session?.session?.hasPasskey) {
         const ceremony = await request<{
@@ -237,6 +335,13 @@ export function Workspace() {
       );
     });
   }
+  async function developmentSignIn() {
+    await action(async () => {
+      await workspaceRequest("/api/auth/local/sign-in", {}, { "Content-Type": "application/json" });
+      await refresh();
+      setNotice("Development sign-in ready. This workspace uses a synthetic local identity.");
+    });
+  }
   async function saveOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
@@ -251,26 +356,52 @@ export function Workspace() {
       setNotice("Your empty organization is ready. Intake and manual proposals are enabled.");
     });
   }
-  async function createLead(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fields = new FormData(form);
-    await action(async () => {
-      const input = {
-        title: fields.get("title"),
-        contactName: fields.get("contactName"),
-        contactEmail: fields.get("contactEmail") || null,
-        details: fields.get("details"),
-      };
-      const lead = await request<CplWorkflowLead>("/api/cpl/leads", {
-        ...input,
-        idempotencyKey: createKey("lead", input),
-      });
+  async function saveLead(input: LeadInput, id?: string) {
+    let lead: CplWorkflowLead | null = null;
+    const succeeded = await action(async () => {
+      lead = await request<CplWorkflowLead>(
+        id ? `/api/cpl/leads/${id}` : "/api/cpl/leads",
+        id
+          ? input
+          : {
+              ...input,
+              idempotencyKey: createKey("lead", input),
+            },
+        id ? "PATCH" : "POST",
+      );
       delete createAttempts.current.lead;
-      form.reset();
       await refresh();
       setLeadId(lead.id);
-      setNotice("Lead saved to your organization.");
+      setNotice(
+        id
+          ? "Lead changes saved. Review the updated readiness and source evidence."
+          : "Lead saved to your organization.",
+      );
+    });
+    return succeeded ? lead : null;
+  }
+  async function preserveEvidence(id: string, input: LeadInput) {
+    let lead: CplWorkflowLead | null = null;
+    const succeeded = await action(async () => {
+      lead = await request<CplWorkflowLead>(`/api/cpl/leads/${id}/evidence`, {
+        ...input,
+        idempotencyKey: createKey(`evidence:${id}`, input),
+      });
+      delete createAttempts.current[`evidence:${id}`];
+      await refresh();
+      setNotice("Source evidence preserved with the lead.");
+    });
+    return succeeded ? lead : null;
+  }
+  async function saveDirectory(input: LeadInput) {
+    return action(async () => {
+      await request("/api/cpl/directory", {
+        ...input,
+        idempotencyKey: createKey("directory", input),
+      });
+      delete createAttempts.current.directory;
+      await refresh();
+      setNotice("Company directory record saved. You can now select it in the lead.");
     });
   }
   async function saveDraft(event: FormEvent<HTMLFormElement>) {
@@ -296,12 +427,105 @@ export function Workspace() {
       setDraftTitle("");
       setDraftContent("");
       setNotice(
-        "Draft saved. Downloads are prepared every 15 minutes. Use Refresh status to check progress.",
+        "Draft saved. Background preparation has started. Use Refresh status to check progress.",
       );
     });
   }
+  async function commercialRequest<T>(path: string, body?: unknown): Promise<T> {
+    try {
+      return await workspaceRequest<T>(
+        path,
+        body,
+        {
+          "Content-Type": "application/json",
+          "X-CPL-CSRF": session?.csrfToken ?? "",
+          "X-CPL-Organization": data.currentOrganizationId ?? "",
+        },
+        "POST",
+        { "X-CPL-Organization": data.currentOrganizationId ?? "" },
+      );
+    } catch (caught) {
+      if (
+        caught instanceof WorkspaceRequestError &&
+        caught.code === "CPL_ORGANIZATION_CONTEXT_CHANGED"
+      ) {
+        resetRecords();
+        await refresh().catch(() => undefined);
+      }
+      if (
+        caught instanceof WorkspaceRequestError &&
+        ["CPL_CSRF_REJECTED", "CPL_AUTHENTICATION_REQUIRED", "CPL_SESSION_REQUIRED"].includes(
+          caught.code,
+        )
+      ) {
+        const current = await workspaceRequest<Session>("/api/auth/session").catch(() => null);
+        if (current?.authenticated === false) clearSession(current);
+      }
+      throw caught;
+    }
+  }
+  function openLead(id: string) {
+    void action(async () => {
+      const lead = await commercialRequest<CplWorkflowLead>(`/api/cpl/leads/${id}`);
+      if (lead.id !== id || lead.organizationId !== data.currentOrganizationId)
+        throw new WorkspaceRequestError(
+          "CPL_ORGANIZATION_CONTEXT_CHANGED",
+          messages.CPL_ORGANIZATION_CONTEXT_CHANGED!,
+        );
+      setData((previous) => ({
+        ...previous,
+        leads: [lead, ...previous.leads.filter((item) => item.id !== id)],
+      }));
+      setCommercialDirty(false);
+      setCommercialIntent(undefined);
+      setRecordIntent(undefined);
+      setLeadId(id);
+      setView("leads");
+    });
+  }
+  function openActionTarget(target: CplActionTarget) {
+    // ActionCenter invokes this only after its own unsaved-work decision.
+    if (target.kind === "lead") {
+      openLead(target.id);
+      return;
+    }
+    if (target.kind === "execution") return;
+    if (["visit", "report", "package"].includes(target.kind) && !target.projectId) {
+      setError("This action is missing its project reference. Refresh the Action Center.");
+      return;
+    }
+    setCommercialDirty(false);
+    setCommercialIntent(undefined);
+    setRecordIntent({ ...target, kind: target.kind, nonce: ++recordNonce.current });
+    setView("commercial");
+  }
+  async function fieldUpload<T>(input: FieldUploadInput): Promise<T> {
+    try {
+      return await uploadFieldPhoto<T>(input, {
+        organizationId: data.currentOrganizationId ?? "",
+        csrfToken: session?.csrfToken ?? "",
+      });
+    } catch (caught) {
+      if (caught instanceof FieldUploadError) {
+        if (caught.code === "CPL_ORGANIZATION_CONTEXT_CHANGED") {
+          resetRecords();
+          await refresh().catch(() => undefined);
+        }
+        if (
+          ["CPL_CSRF_REJECTED", "CPL_AUTHENTICATION_REQUIRED", "CPL_SESSION_REQUIRED"].includes(
+            caught.code,
+          )
+        ) {
+          const current = await workspaceRequest<Session>("/api/auth/session").catch(() => null);
+          if (current?.authenticated === false) clearSession(current);
+        }
+      }
+      throw caught;
+    }
+  }
   return (
     <>
+      {commercialNavigation.dialog}
       <header className={styles.header}>
         <div className={styles.brand}>
           <AppLogo priority />
@@ -313,12 +537,15 @@ export function Workspace() {
         {session?.authenticated ? (
           <button
             disabled={busy}
-            onClick={() =>
-              void action(async () => {
-                await request("/api/auth/logout", {});
-                clearSession();
-              })
-            }
+            onClick={() => {
+              commercialNavigation.navigate(
+                () =>
+                  void action(async () => {
+                    await request("/api/auth/logout", {});
+                    clearSession();
+                  }),
+              );
+            }}
           >
             Sign out
           </button>
@@ -326,6 +553,16 @@ export function Workspace() {
           <span className={styles.badge}>Company workspace</span>
         )}
       </header>
+      {session ? (
+        <div className={styles.developmentBanner}>
+          <strong>{localDevelopment ? "DEVELOPMENT" : "HOSTED DEVELOPMENT PREVIEW"}</strong>
+          <span>
+            {localDevelopment
+              ? "Local workspace · synthetic sign-in · no customer sending"
+              : "Product development · customer delivery and production acceptance deferred"}
+          </span>
+        </div>
+      ) : null}
       <main id="workspace" className={styles.main}>
         {error ? (
           <div role="alert" className={`${styles.notice} ${styles.error}`}>
@@ -348,11 +585,25 @@ export function Workspace() {
             <p className={styles.muted}>
               Sign in to your company workspace to manage intake and prepare proposal drafts.
             </p>
-            <form action="/api/auth/google/start" method="post">
-              <button className={styles.primary} type="submit">
-                Continue with Google
+            {!session ? (
+              <p role="status" className={styles.muted}>
+                Checking workspace access…
+              </p>
+            ) : localDevelopment ? (
+              <button
+                className={styles.primary}
+                disabled={busy}
+                onClick={() => void developmentSignIn()}
+              >
+                Enter development workspace
               </button>
-            </form>
+            ) : (
+              <form action="/api/auth/google/start" method="post">
+                <button className={styles.primary} type="submit">
+                  Continue with Google
+                </button>
+              </form>
+            )}
             <p className={styles.meta}>
               Organization access is assigned by an authorized administrator. New workspaces start
               empty.
@@ -365,7 +616,7 @@ export function Workspace() {
                 <p className={styles.eyebrow}>COMPANY WORKSPACE</p>
                 <h1>{organization?.displayName ?? "Set up your organization"}</h1>
                 <p className={styles.muted}>
-                  {session.identity?.displayName} · Intake &amp; manual proposals
+                  {session.identity?.displayName} · Intake, proposals &amp; project handoff
                 </p>
               </div>
               {data.organizations.length ? (
@@ -377,11 +628,14 @@ export function Workspace() {
                     disabled={busy}
                     onChange={(event) => {
                       const id = event.target.value;
-                      void action(async () => {
-                        await request("/api/cpl/organizations/select", { organizationId: id });
-                        resetRecords();
-                        await refresh();
-                      });
+                      commercialNavigation.navigate(
+                        () =>
+                          void action(async () => {
+                            await request("/api/cpl/organizations/select", { organizationId: id });
+                            resetRecords();
+                            await refresh();
+                          }),
+                      );
                     }}
                   >
                     {!data.currentOrganizationId ? (
@@ -405,13 +659,21 @@ export function Workspace() {
                 </p>
                 {session.session?.stepUpRequired ? (
                   <div className={styles.notice}>
-                    <p>Verify your identity with a passkey to continue.</p>
+                    <p>
+                      {localDevelopment
+                        ? "Refresh your development sign-in to continue."
+                        : "Verify your identity with a passkey to continue."}
+                    </p>
                     <button
                       className={styles.secondary}
                       disabled={busy}
                       onClick={() => void passkey()}
                     >
-                      {session.session.hasPasskey ? "Verify passkey" : "Set up passkey"}
+                      {localDevelopment
+                        ? "Refresh development sign-in"
+                        : session.session.hasPasskey
+                          ? "Verify passkey"
+                          : "Set up passkey"}
                     </button>
                   </div>
                 ) : null}
@@ -460,164 +722,173 @@ export function Workspace() {
             ) : (
               <>
                 <nav className={styles.tabs} aria-label="Workspace sections">
-                  {(["leads", "proposals", "settings"] as const).map((item) => (
-                    <button
-                      key={item}
-                      aria-current={view === item ? "page" : undefined}
-                      onClick={() => setView(item)}
-                    >
-                      {item === "leads"
-                        ? "Leads"
-                        : item === "proposals"
-                          ? "Proposal drafts"
-                          : "Organization"}
-                    </button>
-                  ))}
+                  {(["actions", "leads", "commercial", "proposals", "settings"] as const).map(
+                    (item) => (
+                      <button
+                        key={item}
+                        aria-current={view === item ? "page" : undefined}
+                        disabled={busy}
+                        onClick={() => {
+                          if (view !== item)
+                            commercialNavigation.navigate(() => {
+                              setCommercialDirty(false);
+                              setCommercialIntent(undefined);
+                              setRecordIntent(undefined);
+                              setView(item);
+                            });
+                        }}
+                      >
+                        {item === "actions"
+                          ? "Action Center"
+                          : item === "leads"
+                            ? "Leads"
+                            : item === "commercial"
+                              ? "Proposals"
+                              : item === "proposals"
+                                ? "Legacy drafts"
+                                : "Organization"}
+                      </button>
+                    ),
+                  )}
                 </nav>
+                {view === "actions" ? (
+                  <ActionCenter
+                    key={data.currentOrganizationId}
+                    organizationId={data.currentOrganizationId!}
+                    request={commercialRequest}
+                    onDirty={setCommercialDirty}
+                    onBusy={setBusy}
+                    onOpen={openActionTarget}
+                  />
+                ) : null}
                 {view === "leads" ? (
-                  <div className={styles.grid} key={data.currentOrganizationId}>
-                    <section className={styles.panel}>
-                      <h2>New lead</h2>
-                      <p className={styles.muted}>
-                        Capture an inquiry before preparing a proposal.
-                      </p>
-                      <form className={styles.form} onSubmit={(event) => void createLead(event)}>
-                        <label className={styles.field}>
-                          Lead title
-                          <input
-                            name="title"
-                            required
-                            maxLength={180}
-                            placeholder="Fictional test — site inspection"
-                          />
-                        </label>
-                        <label className={styles.field}>
-                          Contact name
-                          <input name="contactName" required maxLength={160} />
-                        </label>
-                        <label className={styles.field}>
-                          Contact email (optional)
-                          <input name="contactEmail" type="email" maxLength={254} />
-                        </label>
-                        <label className={styles.field}>
-                          Request details
-                          <textarea name="details" maxLength={10000} />
-                        </label>
-                        <button className={styles.primary} disabled={busy} type="submit">
-                          Save lead
-                        </button>
-                      </form>
-                    </section>
-                    <section className={styles.panel}>
-                      <div className={styles.actions}>
-                        <h2>
-                          Leads <span className={styles.badge}>{data.leads.length}</span>
-                        </h2>
-                        <button
-                          className={styles.secondary}
-                          disabled={busy}
-                          onClick={() => void action(refresh)}
-                        >
-                          Refresh
-                        </button>
-                      </div>
-                      {data.leads.length ? (
-                        <ul className={styles.list}>
-                          {data.leads.map((lead) => (
-                            <li key={lead.id}>
-                              <button
-                                className={styles.record}
-                                aria-pressed={leadId === lead.id}
-                                onClick={() => setLeadId(lead.id)}
-                              >
-                                <strong>{lead.title}</strong>
-                                <small>
-                                  {lead.contactName} ·{" "}
-                                  {new Date(lead.createdAt).toLocaleDateString()}
-                                </small>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className={styles.empty}>
-                          No leads yet. Your first inquiry will appear here.
-                        </p>
-                      )}
-                      {selectedLead ? (
-                        <article className={styles.detail}>
-                          <h3>{selectedLead.title}</h3>
-                          <p>
-                            {selectedLead.contactName}
-                            {selectedLead.contactEmail ? ` · ${selectedLead.contactEmail}` : ""}
-                          </p>
-                          <p className={styles.document}>{selectedLead.details}</p>
-                          <button
-                            className={styles.primary}
-                            onClick={() => {
-                              setView("proposals");
-                              setProposalId("");
-                              setEditing(false);
-                              setEditVersion(null);
-                              setDraftTitle(`Proposal — ${selectedLead.title}`);
-                              setDraftContent("");
-                            }}
-                          >
-                            Draft proposal
-                          </button>
-                        </article>
-                      ) : null}
-                    </section>
-                  </div>
+                  <LeadWorkspace
+                    key={data.currentOrganizationId}
+                    leads={data.leads}
+                    proposals={data.proposals}
+                    directory={data.intakeDirectory ?? emptyDirectory}
+                    permissions={permissions}
+                    selectedId={leadId}
+                    busy={busy}
+                    onSelect={setLeadId}
+                    onRefresh={() => void action(refresh)}
+                    onSave={saveLead}
+                    onEvidence={preserveEvidence}
+                    onDirectory={saveDirectory}
+                    onProposal={(lead, selectedId) => {
+                      setLeadId(lead.id);
+                      setView(selectedId ? "proposals" : "commercial");
+                      setCommercialIntent(selectedId ? undefined : { leadId: lead.id });
+                      setRecordIntent(undefined);
+                      setProposalId(selectedId ?? "");
+                      setEditing(false);
+                      setEditVersion(null);
+                      setDraftTitle(selectedId ? "" : `Proposal — ${lead.title}`);
+                      setDraftContent("");
+                    }}
+                  />
+                ) : null}
+                {view === "commercial" ? (
+                  <CommercialWorkspace
+                    key={`${data.currentOrganizationId}:${recordIntent?.nonce ?? "browse"}`}
+                    organizationId={data.currentOrganizationId!}
+                    leads={data.leads}
+                    legacyDrafts={data.proposals}
+                    intent={commercialIntent}
+                    recordIntent={recordIntent}
+                    request={commercialRequest}
+                    upload={fieldUpload}
+                    onDirty={setCommercialDirty}
+                    onBusy={setBusy}
+                    onLegacy={() => {
+                      setCommercialDirty(false);
+                      setView("proposals");
+                    }}
+                    onOpenLead={openLead}
+                  />
                 ) : null}
                 {view === "proposals" ? (
                   <div className={styles.grid}>
                     <section className={styles.panel}>
                       <h2>{editing ? "Edit proposal draft" : "New proposal draft"}</h2>
                       <p className={styles.muted}>
-                        Write your proposal content below. Drafts stay inside your workspace; saving
-                        does not send anything to the contact.
+                        Preserved manual drafts use the original text and Markdown preparation flow.
+                        Use Proposals for structured pricing, review, approved PDFs and project
+                        handoff.
                       </p>
                       <form className={styles.form} onSubmit={(event) => void saveDraft(event)}>
-                        <label className={styles.field}>
-                          Associated lead
-                          <select
-                            value={editing && selectedProposal ? selectedProposal.leadId : leadId}
-                            required
-                            disabled={editing}
-                            onChange={(e) => setLeadId(e.target.value)}
-                          >
-                            <option value="">Choose a lead</option>
-                            {data.leads.map((lead) => (
-                              <option value={lead.id} key={lead.id}>
-                                {lead.title}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className={styles.field}>
-                          Proposal title
-                          <input
-                            value={draftTitle}
-                            onChange={(e) => setDraftTitle(e.target.value)}
-                            required
-                            maxLength={180}
-                          />
-                        </label>
-                        <label className={styles.field}>
-                          Manual proposal content
-                          <textarea
-                            value={draftContent}
-                            onChange={(e) => setDraftContent(e.target.value)}
-                            required
-                            maxLength={50000}
-                            rows={12}
-                            placeholder="Scope of work, deliverables, pricing, assumptions, and next steps…"
-                          />
-                        </label>
+                        {!editing &&
+                        proposalLead &&
+                        (proposalLead.status !== "ready_for_proposal" ||
+                          !proposalLead.readiness.readyForProposal) ? (
+                          <div className={styles.warning}>
+                            This lead is not ready for a new proposal.{" "}
+                            <button
+                              type="button"
+                              className={styles.textButton}
+                              onClick={() => setView("leads")}
+                            >
+                              Review lead information
+                            </button>
+                          </div>
+                        ) : null}
+                        <fieldset
+                          className={styles.fieldset}
+                          disabled={
+                            busy ||
+                            (editing
+                              ? !permissions.canEditProposal
+                              : !permissions.canCreateProposal)
+                          }
+                        >
+                          <label className={styles.field}>
+                            Associated lead
+                            <select
+                              value={editing && selectedProposal ? selectedProposal.leadId : leadId}
+                              required
+                              disabled={editing}
+                              onChange={(e) => setLeadId(e.target.value)}
+                            >
+                              <option value="">Choose a lead</option>
+                              {data.leads.map((lead) => (
+                                <option value={lead.id} key={lead.id}>
+                                  {lead.title}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className={styles.field}>
+                            Proposal title
+                            <input
+                              value={draftTitle}
+                              onChange={(e) => setDraftTitle(e.target.value)}
+                              required
+                              maxLength={180}
+                            />
+                          </label>
+                          <label className={styles.field}>
+                            Manual proposal content
+                            <textarea
+                              value={draftContent}
+                              onChange={(e) => setDraftContent(e.target.value)}
+                              required
+                              maxLength={50000}
+                              rows={12}
+                              placeholder="Scope of work, deliverables, pricing, assumptions, and next steps…"
+                            />
+                          </label>
+                        </fieldset>
                         <button
                           className={styles.primary}
-                          disabled={busy || !data.leads.length}
+                          disabled={
+                            busy ||
+                            !data.leads.length ||
+                            (editing
+                              ? !permissions.canEditProposal
+                              : !permissions.canCreateProposal ||
+                                proposalLead?.status !== "ready_for_proposal" ||
+                                !proposalLead?.readiness.readyForProposal)
+                          }
                           type="submit"
                         >
                           Save draft
@@ -680,8 +951,21 @@ export function Workspace() {
                           <div className={styles.document}>{selectedProposal.content}</div>
                           <div className={styles.actions}>
                             <button
+                              className={styles.primary}
+                              disabled={busy || !permissions.canCreateProposal}
+                              onClick={() => {
+                                setCommercialIntent({
+                                  leadId: selectedProposal.leadId,
+                                  legacyDraftId: selectedProposal.id,
+                                });
+                                setView("commercial");
+                              }}
+                            >
+                              Upgrade to structured proposal
+                            </button>
+                            <button
                               className={styles.secondary}
-                              disabled={busy}
+                              disabled={busy || !permissions.canEditProposal}
                               onClick={() => {
                                 setEditing(true);
                                 setEditVersion(selectedProposal.version);
@@ -727,8 +1011,10 @@ export function Workspace() {
                       <span className={styles.muted}>{organization.slug}</span>
                     </p>
                     <p className={styles.muted}>
-                      Enabled: intake and manual proposal drafts. AI generation, connectors,
-                      customer sending, and other workflow modules are unavailable in this release.
+                      Intake and proposal access follow your company’s enabled modules and role.
+                      Structured proposal review and project handoff are available where enabled. AI
+                      generation, customer sending, scheduling and field work are not performed
+                      here.
                     </p>
                     <div className={styles.actions}>
                       <button
@@ -736,7 +1022,11 @@ export function Workspace() {
                         disabled={busy}
                         onClick={() => void passkey()}
                       >
-                        {session.session?.hasPasskey ? "Verify passkey" : "Set up passkey"}
+                        {localDevelopment
+                          ? "Refresh development sign-in"
+                          : session.session?.hasPasskey
+                            ? "Verify passkey"
+                            : "Set up passkey"}
                       </button>
                       <button
                         className={styles.secondary}

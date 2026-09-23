@@ -73,7 +73,7 @@ describe("Phase 1.3.4 production system seed", () => {
     await migrateDatabase(database);
 
     await expect(verifyMigrations(database)).resolves.toMatchObject({
-      current: "0026_cpl_hosted_workflow.sql",
+      current: "0035_cpl_delivery_closeout.sql",
     });
     await expect(seedSystemDatabase(database)).resolves.toMatchObject({
       id: SYSTEM_SEED_ID,

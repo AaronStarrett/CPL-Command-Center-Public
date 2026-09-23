@@ -16,6 +16,10 @@
   "hyperdrive": [{ "binding": "CPL_JOBS_DB", "id": "aae79b27dcfd4586943400d1ab0084eb" }],
   "vars": {
     "CPL_DATABASE_TRANSPORT": "hyperdrive",
+    "CPL_JOBS_TRANSPORT": "neon-http",
+    "CPL_JOBS_HTTP_CONTRACT": "530371055b3db1562bbec76bf245e0c5eb26da8ab643db466b4fa7671bcb5560",
+    "CPL_NEON_JOBS_HOST": "ep-calm-wildflower-b51ccu8u.c-7.us-east-2.aws.neon.tech",
+    "CPL_NEON_JOBS_DATABASE": "cpl_command_center",
     "CPL_PUBLIC_COMMIT": "UNPUBLISHED",
   },
 }

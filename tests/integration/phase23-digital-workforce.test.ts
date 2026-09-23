@@ -89,7 +89,7 @@ describe("Phase 2.3 Digital Workforce persistence and execution", () => {
     const applied = await server.database.query<{ id: string }>(
       "SELECT id FROM bea_schema_migrations ORDER BY id",
     );
-    expect(applied.rows.at(-1)?.id).toBe("0026_cpl_hosted_workflow.sql");
+    expect(applied.rows.at(-1)?.id).toBe("0035_cpl_delivery_closeout.sql");
     const organization = await server.digitalWorkforce.listOrganization();
     expect(organization).toHaveLength(12);
     expect(organization.every((node) => node.digitalAgentLabel === "Digital Agent")).toBe(true);

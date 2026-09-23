@@ -8,7 +8,7 @@ The reviewed Windows installation includes the following dependencies with terms
 
 | Package                     | Version      | Declared license                 | Upstream source                                                |
 | --------------------------- | ------------ | -------------------------------- | -------------------------------------------------------------- |
-| @img/sharp-win32-x64        | 0.35.3       | Apache-2.0 AND LGPL-3.0-or-later | [sharp](https://github.com/lovell/sharp)                       |
+| @img/sharp-win32-x64        | 0.35.4       | Apache-2.0 AND LGPL-3.0-or-later | [sharp](https://github.com/lovell/sharp)                       |
 | axe-core                    | 4.13.0       | MPL-2.0                          | [axe-core](https://github.com/dequelabs/axe-core)              |
 | caniuse-lite                | 1.0.30001809 | CC-BY-4.0                        | [caniuse-lite](https://github.com/browserslist/caniuse-lite)   |
 | lightningcss                | 1.33.0       | MPL-2.0                          | [lightningcss](https://github.com/parcel-bundler/lightningcss) |

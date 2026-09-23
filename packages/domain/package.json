@@ -6,10 +6,35 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./cpl-automation": {
+      "types": "./src/cpl-automation.ts",
+      "default": "./src/cpl-automation.ts"
+    },
+    "./cpl-report": {
+      "types": "./src/cpl-report.ts",
+      "default": "./src/cpl-report.ts"
+    },
+    "./cpl-field": {
+      "types": "./src/cpl-field.ts",
+      "default": "./src/cpl-field.ts"
+    },
+    "./cpl-execution": {
+      "types": "./src/cpl-execution.ts",
+      "default": "./src/cpl-execution.ts"
+    },
+    "./cpl-intake": {
+      "types": "./src/cpl-intake.ts",
+      "default": "./src/cpl-intake.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    }
+    },
+    "./cpl-commercial": {
+      "types": "./src/cpl-commercial.ts",
+      "default": "./src/cpl-commercial.ts"
+    },
+    "./cpl-delivery": "./src/cpl-delivery.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

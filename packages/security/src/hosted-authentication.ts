@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { readLocalDevelopmentConfiguration } from "./local-development-auth.js";
 import type {
   AuthenticationResponseJSON,
   RegistrationResponseJSON,
@@ -77,11 +78,18 @@ export class CplHostedAuthService {
   constructor(
     private readonly store: CplHostedAuthStore,
     private readonly oidc: Pick<GoogleOidcAdapter, "authorizationUrl" | "exchangeCode">,
-    configuration: { readonly appOrigin: string; readonly now?: () => Date },
+    configuration: {
+      readonly appOrigin: string;
+      readonly now?: () => Date;
+      readonly localDevelopment?: true;
+    },
   ) {
     const url = new URL(configuration.appOrigin);
+    const localOrigin = configuration.localDevelopment
+      ? readLocalDevelopmentConfiguration().origin
+      : undefined;
     if (
-      url.protocol !== "https:" ||
+      (localOrigin ? configuration.appOrigin !== localOrigin : url.protocol !== "https:") ||
       url.origin !== configuration.appOrigin ||
       url.username ||
       url.password

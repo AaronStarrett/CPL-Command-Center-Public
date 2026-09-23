@@ -27,7 +27,7 @@ const SALES = DEMO_PERSONAS[1]!.id;
 const OPERATIONS = DEMO_PERSONAS[2]!.id;
 const EXECUTIVE = DEMO_PERSONAS[3]!.id;
 const INTEGRATION = DEMO_PERSONAS[4]!.id;
-const MIGRATION_0026 = "0026_cpl_hosted_workflow.sql";
+const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
 
 let database: PGliteDatabaseAdapter;
 let pipeline: InspectionReportPipeline;
@@ -53,7 +53,7 @@ beforeAll(async () => {
   expect(process.env.OPENAI_API_KEY ?? "").toBe("");
   database = new PGliteDatabaseAdapter("memory://");
   const migrated = await migrateDatabase(database);
-  expect(migrated.applied.at(-1)).toBe(MIGRATION_0026);
+  expect(migrated.applied.at(-1)).toBe(LATEST_MIGRATION);
   await seedDatabase(database);
   await seedDatabase(database);
   pipeline = createInspectionReportPipeline(database, "demo", { processInline: true });

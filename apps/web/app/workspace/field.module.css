@@ -1,0 +1,169 @@
+.shell,
+.stack {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.context {
+  border-left: 4px solid #268497;
+  padding: 16px 20px;
+  background: #edf5f7;
+  border-radius: 8px;
+}
+.context h3,
+.context p {
+  margin: 0 0 8px;
+}
+.fieldCard {
+  padding: 18px;
+  border: 1px solid #d3e2e8;
+  border-radius: 9px;
+  display: grid;
+  gap: 15px;
+  min-width: 0;
+}
+.fieldCard h4 {
+  margin: 0;
+}
+.result {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.result label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #c9dce4;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 13px;
+}
+.result input {
+  width: 18px;
+  height: 18px;
+}
+.photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.photo {
+  border: 1px solid #d0e0e6;
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 0;
+  background: #fff;
+}
+.photoImage {
+  display: block;
+  width: 100%;
+  height: 210px;
+  object-fit: contain;
+  background: #edf2f4;
+}
+.photoBody {
+  padding: 15px;
+  display: grid;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.photoBody p {
+  margin: 0;
+}
+.upload {
+  padding: 20px;
+  border: 2px dashed #8cb4c1;
+  border-radius: 10px;
+  background: #f4fafb;
+  display: grid;
+  gap: 14px;
+}
+.upload input[type="file"] {
+  max-width: 100%;
+  min-height: 44px;
+}
+.queue {
+  display: grid;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 12px;
+}
+.queue li {
+  padding: 14px;
+  border: 1px solid #d2e2e8;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.queue progress {
+  width: 100%;
+  height: 12px;
+}
+.annotation {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.annotationImage {
+  max-width: 640px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #bacfd8;
+  background: #e8f0f3;
+  border-radius: 8px;
+}
+.annotationSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+.annotationControls {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+}
+.annotationControls input[type="color"] {
+  padding: 5px;
+}
+.selected {
+  background: #eff8f8;
+  border-color: #5ca4b3;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.preserved {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #526f7d;
+  padding: 12px 15px;
+  background: #edf3f6;
+  border-radius: 7px;
+}
+@media (max-width: 760px) {
+  .photos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .result label {
+    flex: 1 1 44%;
+  }
+  .actions > button {
+    flex: 1 1 auto;
+  }
+  .fieldCard {
+    padding: 14px;
+  }
+}

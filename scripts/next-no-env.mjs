@@ -7,6 +7,7 @@ import fileSystemPromises from "node:fs/promises";
 
 import { assertRepositoryBoundary } from "./repository-boundary.mjs";
 import { installBuildReadlinkCompatibility } from "./next-build-filesystem.mjs";
+import { assertNoLocalDevelopmentConfiguration } from "./local-development-policy.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(scriptPath), "..");
@@ -121,6 +122,8 @@ export async function runNextWithoutRepositoryEnv(
   const importNextCli = options.importNextCli ?? ((specifier) => import(specifier));
 
   runNextLaunchStage("boundary", () => assertBoundary({ target: repositoryRoot }));
+  if (["build", "start"].includes(arguments_[0]))
+    assertNoLocalDevelopmentConfiguration(environment);
   // The CLI schedules its build asynchronously, so this process-local adapter
   // must live through final output tracing. Dev/start do not install it.
   installBuildReadlinkCompatibility({

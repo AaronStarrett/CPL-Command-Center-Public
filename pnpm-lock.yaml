@@ -129,6 +129,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.5
         version: 0.5.5
+      '@neondatabase/serverless':
+        specifier: 1.1.0
+        version: 1.1.0
       '@simplewebauthn/browser':
         specifier: 14.0.0
         version: 14.0.0
@@ -178,6 +181,9 @@ importers:
       '@bea/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@neondatabase/serverless':
+        specifier: 1.1.0
+        version: 1.1.0
       pg-boss:
         specifier: 10.4.2
         version: 10.4.2
@@ -197,9 +203,15 @@ importers:
 
   packages/artifacts:
     dependencies:
+      '@bea/domain':
+        specifier: workspace:*
+        version: link:../domain
       pdf-lib:
         specifier: 1.17.1
         version: 1.17.1
+      sharp:
+        specifier: 0.35.4
+        version: 0.35.4(@types/node@20.19.43)
 
   packages/automation:
     dependencies:
@@ -233,6 +245,9 @@ importers:
       '@bea/ai':
         specifier: workspace:*
         version: link:../ai
+      '@bea/artifacts':
+        specifier: workspace:*
+        version: link:../artifacts
       '@bea/automation':
         specifier: workspace:*
         version: link:../automation
@@ -256,7 +271,7 @@ importers:
         version: 0.5.5
       drizzle-orm:
         specifier: 0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.5.5)(@types/pg@8.15.6)(pg@8.23.0)
+        version: 0.45.2(@electric-sql/pglite@0.5.5)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.23.0)
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -1718,6 +1733,10 @@ packages:
     peerDependencies:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
+
+  '@neondatabase/serverless@1.1.0':
+    resolution: {integrity: sha512-r3ZZhRjEcfEdKIZnoB1RusNgvHuaBRqfCzV4Gi+5A9yUX0S4HTws/ASWqt13wL4y4I+0rqsWGdA2w7EQXHi3+Q==}
+    engines: {node: '>=19.0.0'}
 
   '@next/env@16.3.5':
     resolution: {integrity: sha512-NWEXVDMqoEo0ktmU6u0sE2Vg0LOcsD7NnOTJNo3/fEaTfsg+F1bMIxuDmQbda4e3yTIQwVdUREF2yIuMOusKtg==}
@@ -6354,6 +6373,8 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
+  '@neondatabase/serverless@1.1.0': {}
+
   '@next/env@16.3.5': {}
 
   '@next/eslint-plugin-next@16.3.5(eslint@9.39.5(supports-color@7.2.0))':
@@ -7606,9 +7627,10 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.5)(@types/pg@8.15.6)(pg@8.23.0):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.5)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.23.0):
     optionalDependencies:
       '@electric-sql/pglite': 0.5.5
+      '@neondatabase/serverless': 1.1.0
       '@types/pg': 8.15.6
       pg: 8.23.0
 

@@ -1,4 +1,16 @@
+import {
+  SqlCplIntakeRepository,
+  type CplWorkflowLead,
+  type CplIntakeDirectory,
+  type CplWorkflowPermissions,
+} from "./cpl-intake-repository.js";
+export type {
+  CplWorkflowLead,
+  CplIntakeDirectory,
+  CplWorkflowPermissions,
+} from "./cpl-intake-repository.js";
 import { createHash, randomUUID } from "node:crypto";
+import { processCplAutomationJob } from "./cpl-automation-worker.js";
 import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
 import {
   SqlCplTenantRepository,
@@ -8,17 +20,6 @@ import {
 import { verifyHostedDatabaseRole } from "./hosted-database-role.js";
 
 type Row = Record<string, unknown>;
-export interface CplWorkflowLead {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly title: string;
-  readonly contactName: string;
-  readonly contactEmail: string | null;
-  readonly details: string;
-  readonly version: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
 export interface CplProposalDraft {
   readonly id: string;
   readonly organizationId: string;
@@ -79,19 +80,6 @@ function instant(value: unknown): string {
 }
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-function lead(row: Row): CplWorkflowLead {
-  return {
-    id: String(row.id),
-    organizationId: String(row.organization_id),
-    title: String(row.title),
-    contactName: String(row.contact_name),
-    contactEmail: row.contact_email == null ? null : String(row.contact_email),
-    details: String(row.details),
-    version: Number(row.version),
-    createdAt: instant(row.created_at),
-    updatedAt: instant(row.updated_at),
-  };
 }
 function proposal(row: Row): CplProposalDraft {
   return {
@@ -181,82 +169,19 @@ async function enqueue(executor: SqlExecutor, access: CplTenantAccess, draft: Ro
 
 /** All request values originate in authenticated server context; every operation
  * independently revalidates the session, membership, permission and module. */
-export class SqlCplWorkflowRepository {
+export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
   constructor(
     _database: DatabaseAdapter,
     private readonly tenants: SqlCplTenantRepository,
-  ) {}
-  async createLead(
-    request: CplTenantRequest & {
-      title: string;
-      contactName: string;
-      contactEmail?: string;
-      details?: string;
-      idempotencyKey: string;
-    },
-  ): Promise<CplWorkflowLead> {
-    const title = text(request.title, 240).trim(),
-      contactName = text(request.contactName, 240).trim();
-    const contactEmail = request.contactEmail?.trim() || null,
-      details = text(request.details ?? "", 20_000, true);
-    if (
-      contactEmail &&
-      (contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(contactEmail))
-    )
-      fail("CPL_INVALID_INPUT");
-    return this.tenants.withTenantTransaction(
-      request,
-      "records:write",
-      "intake-job-tracker",
-      async (executor, access) => {
-        const resource = await idempotentResource(
-          executor,
-          access,
-          "lead.create",
-          request.idempotencyKey,
-          { title, contactName, contactEmail, details },
-        );
-        if (resource.created) {
-          await executor.query(
-            "INSERT INTO cpl_workflow_leads (id,organization_id,title,contact_name,contact_email,details,created_by_identity_id) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-            [
-              resource.id,
-              access.organizationId,
-              title,
-              contactName,
-              contactEmail,
-              details,
-              access.identityId,
-            ],
-          );
-          await audit(executor, access, "lead.created", resource.id);
-        }
-        const result = await executor.query<Row>(
-          "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2",
-          [access.organizationId, resource.id],
-        );
-        return lead(result.rows[0]!);
-      },
-    );
-  }
-  async listLeads(request: CplTenantRequest): Promise<readonly CplWorkflowLead[]> {
-    return this.tenants.withTenantTransaction(
-      request,
-      "records:read",
-      "intake-job-tracker",
-      async (executor, access) =>
-        (
-          await executor.query<Row>(
-            "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 ORDER BY created_at DESC,id LIMIT 100",
-            [access.organizationId],
-          )
-        ).rows.map(lead),
-    );
+  ) {
+    super(tenants);
   }
   async readWorkspace(request: CplTenantRequest): Promise<{
     readonly leads: readonly CplWorkflowLead[];
     readonly proposals: readonly CplProposalDraft[];
     readonly jobs: readonly CplWorkflowJob[];
+    readonly intakeDirectory: CplIntakeDirectory;
+    readonly permissions: CplWorkflowPermissions;
   }> {
     return this.tenants.withTenantReadTransaction(
       request,
@@ -275,25 +200,12 @@ export class SqlCplWorkflowRepository {
           [access.organizationId],
         );
         return {
-          leads: leads.rows.map(lead),
+          leads: await this.intakeLeads(executor, access, leads.rows),
+          intakeDirectory: await this.intakeDirectory(executor, access),
+          permissions: this.intakePermissions(access),
           proposals: proposals.rows.map(proposal),
           jobs: jobs.rows.map(job),
         };
-      },
-    );
-  }
-  async getLead(request: CplTenantRequest & { leadId: string }): Promise<CplWorkflowLead> {
-    return this.tenants.withTenantTransaction(
-      request,
-      "records:read",
-      "intake-job-tracker",
-      async (executor, access) => {
-        const result = await executor.query<Row>(
-          "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2",
-          [access.organizationId, uuid(request.leadId)],
-        );
-        if (!result.rows[0]) fail("CPL_RECORD_NOT_FOUND");
-        return lead(result.rows[0]);
       },
     );
   }
@@ -313,11 +225,23 @@ export class SqlCplWorkflowRepository {
       "records:write",
       "proposal-builder",
       async (executor, access) => {
+        await this.protect(executor);
+        await this.lockIntake(executor, access);
         const parent = await executor.query(
-          "SELECT id FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2 FOR SHARE",
+          "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2 FOR SHARE",
           [access.organizationId, leadId],
         );
         if (!parent.rows[0]) fail("CPL_RECORD_NOT_FOUND");
+        if (parent.rows[0].assigned_member_identity_id) {
+          const assignee = await executor.query(
+            "SELECT m.identity_id FROM cpl_memberships m JOIN cpl_identities i ON i.id=m.identity_id WHERE m.organization_id=$1 AND m.identity_id=$2 AND m.status='active' AND i.status='active' FOR SHARE OF m,i",
+            [access.organizationId, parent.rows[0].assigned_member_identity_id],
+          );
+          if (!assignee.rows[0]) fail("CPL_LEAD_NOT_READY");
+        }
+        const intake = await this.intakeLead(executor, access, parent.rows[0]);
+        if (intake.status !== "ready_for_proposal" || !intake.readiness.readyForProposal)
+          fail("CPL_LEAD_NOT_READY");
         const resource = await idempotentResource(
           executor,
           access,
@@ -455,6 +379,8 @@ export interface CplHostedJobResult {
   completed: number;
   retried: number;
   failed: number;
+  skipped?: number;
+  executionId?: string;
 }
 /** A distinct scheduler login executes one bounded durable job. No request-provided
  * organization, forever loop, provider call or host filesystem is used. */
@@ -471,11 +397,20 @@ export async function processHostedJobs(
     async (executor) => {
       await verifyHostedDatabaseRole(database, "worker", executor);
       const selected = await executor.query<Row>(
-        "SELECT id,attempts,max_attempts FROM cpl_workflow_jobs WHERE (status='queued' AND available_at<=CURRENT_TIMESTAMP) OR (status='running' AND lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
+        "SELECT id,organization_id,kind,attempts,max_attempts FROM cpl_workflow_jobs WHERE (status IN ('queued','retrying') AND available_at<=CURRENT_TIMESTAMP) OR (status='running' AND lease_expires_at<=CURRENT_TIMESTAMP) ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
       );
       const row = selected.rows[0];
       if (!row) return null;
       if (Number(row.attempts) >= Number(row.max_attempts)) {
+        if (row.kind === "automation.recipe") {
+          await executor.query("SELECT set_config('cpl.organization_id',$1,true)", [
+            row.organization_id,
+          ]);
+          await executor.query(
+            "UPDATE cpl_automation_attempts SET status='failed',finished_at=CURRENT_TIMESTAMP,error_code='CPL_JOB_RETRY_EXHAUSTED' WHERE organization_id=$1 AND execution_id=$2 AND status='running'",
+            [row.organization_id, row.id],
+          );
+        }
         await executor.query(
           "UPDATE cpl_workflow_jobs SET status='failed',last_error_code='CPL_JOB_RETRY_EXHAUSTED',lease_token=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1",
           [row.id],
@@ -483,9 +418,22 @@ export async function processHostedJobs(
         return { ...row, exhausted: true };
       }
       const updated = await executor.query<Row>(
-        "UPDATE cpl_workflow_jobs SET status='running',attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,organization_id,proposal_id,proposal_version,issued_by_identity_id,issued_membership_version,attempts,max_attempts",
+        "UPDATE cpl_workflow_jobs SET status='running',revision=revision+1,attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,organization_id,kind,proposal_id,proposal_version,issued_by_identity_id,issued_membership_version,attempts,max_attempts",
         [row.id, leaseToken, options.claimOwner],
       );
+      if (row.kind === "automation.recipe") {
+        await executor.query("SELECT set_config('cpl.organization_id',$1,true)", [
+          row.organization_id,
+        ]);
+        await executor.query(
+          "UPDATE cpl_automation_attempts SET status='retrying',finished_at=CURRENT_TIMESTAMP,error_code='CPL_JOB_LEASE_EXPIRED' WHERE organization_id=$1 AND execution_id=$2 AND status='running'",
+          [row.organization_id, row.id],
+        );
+        await executor.query(
+          "INSERT INTO cpl_automation_attempts(organization_id,execution_id,attempt,status) VALUES($1,$2,$3,'running')",
+          [row.organization_id, row.id, updated.rows[0]!.attempts],
+        );
+      }
       return { ...updated.rows[0]!, exhausted: false };
     },
   );
@@ -493,6 +441,15 @@ export async function processHostedJobs(
   result.claimed = 1;
   if (claimed.exhausted) {
     result.failed = 1;
+    return result;
+  }
+  if (claimed.kind === "automation.recipe") {
+    const outcome = await processCplAutomationJob(database, claimed, leaseToken);
+    result.executionId = String(claimed.id);
+    if (outcome === "completed") result.completed = 1;
+    else if (outcome === "retrying") result.retried = 1;
+    else if (outcome === "skipped") result.skipped = 1;
+    else result.failed = 1;
     return result;
   }
   try {
