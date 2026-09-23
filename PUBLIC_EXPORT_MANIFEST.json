@@ -2303,9 +2303,9 @@
     },
     {
       "path": "docs/FILE_INVENTORY.md",
-      "sha256": "5c158a7a7eae98ac200a815ac98c07340fac9a9da46f41cb7066787b2af63e05",
+      "sha256": "3bb767646aa27b476605daa29d7cc5895db1806be2f6611987786b5b9318582d",
       "sourceSha256": null,
-      "size": 118591,
+      "size": 118717,
       "adaptation": "generated-public-metadata"
     },
     {
@@ -3885,9 +3885,9 @@
     },
     {
       "path": "packages/security/src/hosted-authentication.ts",
-      "sha256": "c4971979fdf32d19154db91d7c906475c2ca28e5fa9a485053ecd772b560acfe",
-      "sourceSha256": "c4971979fdf32d19154db91d7c906475c2ca28e5fa9a485053ecd772b560acfe",
-      "size": 16660,
+      "sha256": "80aa272d1a2e824ce2141f398bc4fdbfcf81aafba385356113b1851637af0d03",
+      "sourceSha256": "80aa272d1a2e824ce2141f398bc4fdbfcf81aafba385356113b1851637af0d03",
+      "size": 17053,
       "adaptation": null
     },
     {
@@ -5628,9 +5628,9 @@
     },
     {
       "path": "tests/integration/cpl-hosted-postgres.test.ts",
-      "sha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
-      "sourceSha256": "e622d3ec65a384e893ed5384fede880f19ccc732655245f2426044d328b68c85",
-      "size": 39221,
+      "sha256": "dcf84f874df9a6631f790be9fda430290d207112c890794157473be6b6f45034",
+      "sourceSha256": "dcf84f874df9a6631f790be9fda430290d207112c890794157473be6b6f45034",
+      "size": 40232,
       "adaptation": null
     },
     {
@@ -6009,6 +6009,13 @@
       "sha256": "e892b5e845b8e9dc876f2da0c1444e842144e98590caf67613168057cd57c9a7",
       "sourceSha256": "e892b5e845b8e9dc876f2da0c1444e842144e98590caf67613168057cd57c9a7",
       "size": 9490,
+      "adaptation": null
+    },
+    {
+      "path": "tests/unit/cpl-hosted-webauthn-loading.test.ts",
+      "sha256": "3fd02d88bd7c67f58fa35b8d670f6f15e4e40e4044e5bddec3b58c1c5e46f09d",
+      "sourceSha256": "3fd02d88bd7c67f58fa35b8d670f6f15e4e40e4044e5bddec3b58c1c5e46f09d",
+      "size": 11994,
       "adaptation": null
     },
     {

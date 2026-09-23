@@ -52,6 +52,24 @@ function connectionFor(connectionString: string, database: string) {
   url.pathname = `/${database}`;
   return url.toString();
 }
+const lockedDraftRead =
+  "SELECT id,title,content,version FROM cpl_proposal_drafts WHERE organization_id=$1 AND id=$2 FOR UPDATE";
+async function waitForDraftLockHook(waiting: Promise<void>, processing: Promise<unknown>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      waiting,
+      processing.then(() => {
+        throw Error("CPL_TEST_DRAFT_LOCK_HOOK_NOT_REACHED");
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(Error("CPL_TEST_DRAFT_LOCK_HOOK_TIMEOUT")), 5_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 suite("hosted workflow against real PostgreSQL with restricted runtime roles", () => {
   let admin: PgDatabaseAdapter,
     control: PgDatabaseAdapter,
@@ -627,6 +645,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
   });
   it("backs off transient failures and exhausts a bounded three-attempt retry budget", async () => {
     const pending = await draft();
+    let injectedFailures = 0;
     const failing = new Proxy(worker, {
       get(target, key) {
         if (key === "transaction")
@@ -636,8 +655,10 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
                 ...executor,
                 execute: executor.execute.bind(executor),
                 query: async (sql: string, parameters?: readonly unknown[]) => {
-                  if (sql.startsWith("SELECT * FROM cpl_proposal_drafts"))
+                  if (sql === lockedDraftRead) {
+                    injectedFailures++;
                     throw Error("private backend failure must not be logged");
+                  }
                   return executor.query(sql, parameters);
                 },
               }),
@@ -648,6 +669,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
     }) as DatabaseAdapter;
     for (let attempt = 1; attempt <= 3; attempt++) {
       const result = await processHostedJobs(failing, { claimOwner: "transient-fixture" });
+      expect(injectedFailures, "Retry injection must reach the locked draft read").toBe(attempt);
       expect(result[attempt === 3 ? "failed" : "retried"]).toBe(1);
       const record = (await workflows.listJobs(requestA)).find(
         (item) => item.proposalId === pending.id,
@@ -735,6 +757,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
   it("refuses preparation when membership is revoked while waiting for a proposal row lock", async () => {
     const pending = await draft();
     const blocker = await admin.pool.connect();
+    let lockedDraftReads = 0;
     let releaseWait!: () => void;
     const waiting = new Promise<void>((resolve) => {
       releaseWait = resolve;
@@ -747,7 +770,10 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
               operation({
                 execute: executor.execute.bind(executor),
                 query: async (sql: string, parameters?: readonly unknown[]) => {
-                  if (sql.startsWith("SELECT * FROM cpl_proposal_drafts")) releaseWait();
+                  if (sql === lockedDraftRead) {
+                    lockedDraftReads++;
+                    releaseWait();
+                  }
                   return executor.query(sql, parameters);
                 },
               }),
@@ -763,7 +789,8 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
         pending.id,
       ]);
       processing = processHostedJobs(observed, { claimOwner: "revoked-while-blocked" });
-      await waiting;
+      await waitForDraftLockHook(waiting, processing);
+      expect(lockedDraftReads, "Revocation rendezvous must reach the locked draft read").toBe(1);
       await admin.query(
         "UPDATE cpl_memberships SET status='suspended',version=version+1 WHERE organization_id=$1 AND identity_id=$2",
         [requestA.organizationId, owner.identityId],

@@ -862,6 +862,7 @@
 | `tests/unit/cpl-hosted-runtime.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-hosted-session-query-counts.test.ts`                                        | Reviewed source publication |
 | `tests/unit/cpl-hosted-web-role-guard.test.ts`                                              | Reviewed source publication |
+| `tests/unit/cpl-hosted-webauthn-loading.test.ts`                                            | Reviewed source publication |
 | `tests/unit/cpl-hosted-workspace-transactions.test.ts`                                      | Reviewed source publication |
 | `tests/unit/cpl-runtime-policy.test.ts`                                                     | Reviewed source publication |
 | `tests/unit/cpl-webpack-filesystem.test.ts`                                                 | Reviewed source publication |

@@ -1,12 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import {
-  generateRegistrationOptions,
-  verifyRegistrationResponse,
-  generateAuthenticationOptions,
-  verifyAuthenticationResponse,
-  type AuthenticationResponseJSON,
-  type RegistrationResponseJSON,
-  type AuthenticatorTransport,
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+  AuthenticatorTransport,
 } from "@simplewebauthn/server";
 import {
   CplHostedAuthenticationError,
@@ -29,6 +25,12 @@ const SESSION_TTL_MS = 60 * 60_000;
 const SESSION_ABSOLUTE_TTL_MS = 8 * SESSION_TTL_MS;
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const token = () => randomBytes(32).toString("base64url");
+
+let webAuthnModule: Promise<typeof import("@simplewebauthn/server")> | undefined;
+function loadWebAuthn() {
+  // Share only the complete SDK module, never request, session, or ceremony state.
+  return (webAuthnModule ??= import("@simplewebauthn/server"));
+}
 
 function assertFirstPartyClientData(encoded: string): void {
   const data: unknown = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
@@ -324,6 +326,7 @@ export class CplHostedAuthService {
           this.now().getTime() - createdAt > CHALLENGE_TTL_MS))
     )
       throw new CplHostedAuthenticationError("CPL_FRESH_AUTHENTICATION_REQUIRED", 403);
+    const { generateRegistrationOptions } = await loadWebAuthn();
     const options = await generateRegistrationOptions({
       rpName: "CPL Command Center",
       rpID: this.rpId,
@@ -351,6 +354,7 @@ export class CplHostedAuthService {
     const challenge = await this.consume(session, "registration", ceremonyToken);
     try {
       assertFirstPartyClientData(response.response.clientDataJSON);
+      const { verifyRegistrationResponse } = await loadWebAuthn();
       const result = await verifyRegistrationResponse({
         response,
         expectedChallenge: challenge,
@@ -388,6 +392,7 @@ export class CplHostedAuthService {
     const credentials = await this.store.listCredentials(session.identityId);
     if (!credentials.length)
       throw new CplHostedAuthenticationError("CPL_PASSKEY_ENROLLMENT_REQUIRED", 403);
+    const { generateAuthenticationOptions } = await loadWebAuthn();
     const options = await generateAuthenticationOptions({
       rpID: this.rpId,
       timeout: 60_000,
@@ -422,6 +427,7 @@ export class CplHostedAuthService {
         response.response.userHandle !== Buffer.from(session.identityId).toString("base64url")
       )
         throw new Error("Credential identity mismatch");
+      const { verifyAuthenticationResponse } = await loadWebAuthn();
       const result = await verifyAuthenticationResponse({
         response,
         expectedChallenge: challenge,
