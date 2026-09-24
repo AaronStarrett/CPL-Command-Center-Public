@@ -201,7 +201,7 @@ suite("tenant commercial spine on isolated real PostgreSQL", () => {
     });
   }
   it("migrates empty without business seeds and verifies the restricted role", async () => {
-    expect((await verifyMigrations(admin)).current).toBe("0035_cpl_delivery_closeout.sql");
+    expect((await verifyMigrations(admin)).current).toBe("0039_cpl_durable_inbound.sql");
     await expect(verifyHostedDatabaseRole(web, "web")).resolves.toMatchObject({ purpose: "web" });
     expect(
       (await admin.query("SELECT count(*) FROM cpl_commercial_proposals")).rows[0]?.count,

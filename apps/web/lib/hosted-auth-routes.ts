@@ -16,6 +16,8 @@ import {
   CPL_LOCAL_SESSION_COOKIE,
   CPL_LOCAL_CSRF_COOKIE,
   signLocalSessionCookie,
+  cplLocalPersona,
+  CPL_LOCAL_PERSONAS,
   type CplHostedSignInResult,
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
@@ -43,6 +45,68 @@ function errorResponse(error: unknown): NextResponse {
       { status: known ? error.status : 503 },
     ),
   );
+}
+
+type LocalEntryStage =
+  | "request_guard"
+  | "request_body"
+  | "guarded_runtime"
+  | "session_issuance"
+  | "session_cookie"
+  | "persona_read"
+  | "entry_readiness";
+/** Correlation is generated here, never taken from request headers. Log only a
+ * closed stage/category: no error message, SQL, URL, body, session or identity. */
+function localEntryFailure(
+  error: unknown,
+  correlationId: string,
+  stage: LocalEntryStage,
+): NextResponse {
+  const known = error instanceof CplHostedAuthenticationError;
+  const allowed = new Set([
+    "CPL_INVALID_AUTH_REQUEST",
+    "CPL_AUTH_REQUEST_TOO_LARGE",
+    "CPL_LOCAL_DEVELOPMENT_REFUSED",
+    "CPL_LOCAL_SCHEMA_EXPECTATION_MISSING",
+    "CPL_LOCAL_DATABASE_UNAVAILABLE",
+    "CPL_LOCAL_SCHEMA_NOT_READY",
+    "CPL_LOCAL_SESSION_PREREQUISITES_UNAVAILABLE",
+    "CPL_LOCAL_PERSONA_UNAVAILABLE",
+    "CPL_AUTH_RATE_LIMITED",
+    "CPL_HOSTED_AUTH_UNAVAILABLE",
+    "CPL_SESSION_REQUIRED",
+    "CPL_AUTHENTICATION_REQUIRED",
+    "CPL_ORGANIZATION_ACCESS_DENIED",
+  ]);
+  const code = known && allowed.has(error.code) ? error.code : "CPL_HOSTED_AUTH_UNAVAILABLE";
+  const safeCategory =
+    error instanceof Error && error.message === "CPL_HOSTED_DATABASE_ROLE_REFUSED"
+      ? "restricted_role_refused"
+      : error &&
+          typeof error === "object" &&
+          "code" in error &&
+          ["42P01", "42703"].includes(String(error.code))
+        ? "schema_contract_missing"
+        : code === "CPL_LOCAL_DEVELOPMENT_REFUSED"
+          ? "local_boundary_or_persona_refused"
+          : "entry_operation_failed";
+  console.error(
+    JSON.stringify({
+      event: "cpl.local.entry.failure",
+      correlationId,
+      stage,
+      code,
+      category: safeCategory,
+    }),
+  );
+  const response = secureResponse(
+    NextResponse.json(
+      { ok: false, code, correlationId },
+      { status: known && allowed.has(error.code) ? error.status : 503 },
+    ),
+  );
+  response.headers.set("X-CPL-Correlation-ID", correlationId);
+  return response;
 }
 
 function sessionResponse(
@@ -230,6 +294,14 @@ export async function hostedSession(request: Request): Promise<NextResponse> {
           NextResponse.json({
             authenticated: true,
             ...descriptor,
+            ...(local
+              ? {
+                  localPersonaKey: CPL_LOCAL_PERSONAS.find(
+                    (persona) =>
+                      persona.subject === session.subject && persona.email === session.email,
+                  )?.key,
+                }
+              : {}),
             identity: {
               id: session.identityId,
               displayName: session.displayName,
@@ -345,30 +417,51 @@ export async function hostedPasskeyVerify(
 export async function localDevelopmentStatus(request: Request): Promise<NextResponse> {
   if (!hasLocalDevelopmentConfiguration())
     return secureResponse(NextResponse.json({ ok: false }, { status: 404 }));
+  const correlationId = crypto.randomUUID();
+  let stage: LocalEntryStage = "request_guard";
   try {
     assertLocalDevelopmentRequest(request);
+    stage = "guarded_runtime";
     return await withHostedRuntime(
-      async () => secureResponse(NextResponse.json({ development: true, ready: true })),
+      async (runtime) => {
+        const { localDevelopmentEntryReadiness } = await import("./local-development-auth");
+        stage = "entry_readiness";
+        await localDevelopmentEntryReadiness(runtime);
+        return secureResponse(NextResponse.json({ development: true, ready: true }));
+      },
       { request },
     );
   } catch (error) {
-    return errorResponse(error);
+    return localEntryFailure(error, correlationId, stage);
   }
 }
 
 export async function localDevelopmentSignIn(request: Request): Promise<NextResponse> {
   if (!hasLocalDevelopmentConfiguration())
     return secureResponse(NextResponse.json({ ok: false }, { status: 404 }));
+  const correlationId = crypto.randomUUID();
+  let stage: LocalEntryStage = "request_guard";
   try {
     assertLocalDevelopmentRequest(request);
+    stage = "request_body";
     const body = await boundedJson(request);
-    if (Object.keys(body).length !== 0)
+    if (Object.keys(body).some((key) => key !== "personaKey"))
       throw new CplHostedAuthenticationError("CPL_INVALID_AUTH_REQUEST", 400);
+    const persona = cplLocalPersona(
+      body.personaKey === undefined ? "legacy-owner" : body.personaKey,
+    );
+    if (!persona) throw new CplHostedAuthenticationError("CPL_INVALID_AUTH_REQUEST", 400);
+    stage = "guarded_runtime";
     return await withHostedRuntime(
       async (runtime) => {
-        const { issueLocalDevelopmentSession } = await import("./local-development-auth");
+        const { issueLocalDevelopmentSession, localDevelopmentEntryReadiness } =
+          await import("./local-development-auth");
+        stage = "entry_readiness";
+        await localDevelopmentEntryReadiness(runtime, persona.key);
         const previous = await hostedCookie(CPL_HOSTED_SESSION_COOKIE, request);
-        const result = await issueLocalDevelopmentSession(runtime, request, previous);
+        stage = "session_issuance";
+        const result = await issueLocalDevelopmentSession(runtime, request, previous, persona.key);
+        stage = "session_cookie";
         return sessionResponse(
           result,
           NextResponse.json({ ok: true, authenticationMode: "local-development", synthetic: true }),
@@ -377,6 +470,33 @@ export async function localDevelopmentSignIn(request: Request): Promise<NextResp
       { request },
     );
   } catch (error) {
-    return errorResponse(error);
+    return localEntryFailure(error, correlationId, stage);
+  }
+}
+
+export async function localDevelopmentConfig(request: Request): Promise<NextResponse> {
+  if (!hasLocalDevelopmentConfiguration())
+    return secureResponse(NextResponse.json({ ok: false }, { status: 404 }));
+  const correlationId = crypto.randomUUID();
+  let stage: LocalEntryStage = "request_guard";
+  try {
+    assertLocalDevelopmentRequest(request);
+    stage = "guarded_runtime";
+    return await withHostedRuntime(
+      async (runtime) => {
+        const { listLocalDevelopmentPersonas } = await import("./local-development-auth");
+        stage = "persona_read";
+        return secureResponse(
+          NextResponse.json({
+            authenticationMode: "local-development",
+            synthetic: true,
+            personas: await listLocalDevelopmentPersonas(runtime),
+          }),
+        );
+      },
+      { request },
+    );
+  } catch (error) {
+    return localEntryFailure(error, correlationId, stage);
   }
 }

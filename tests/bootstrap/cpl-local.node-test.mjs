@@ -10,10 +10,12 @@ import {
   VERIFIED_NODE,
   createControlServer,
   createSafeEnvironment,
+  checkLocalLauncherReadiness,
   ownsProcessEvidence,
   requestControl,
   runtimePaths,
   warmSetupPage,
+  verifyLocalEntryReadiness,
 } from "../../scripts/cpl-local.mjs";
 
 const root = "D:\\Cyber Pirate Labs\\03_ENGINEERING\\Repositories\\CPL-Command-Center";
@@ -262,4 +264,306 @@ test("control reports shutdown failures without claiming a process stopped", asy
   } finally {
     await new Promise((resolve) => control.server.close(resolve));
   }
+});
+
+const entryResponses = {
+  "/workspace": "<html><title>CPL Command Center</title><main>Workspace</main></html>",
+  "/api/auth/session": {
+    authenticated: false,
+    authenticationMode: "local-development",
+    synthetic: true,
+  },
+  "/api/auth/local/config": {
+    authenticationMode: "local-development",
+    synthetic: true,
+    personas: [{ key: "owner-alpha", label: "Synthetic company owner Alpha" }],
+  },
+  "/api/auth/local/status": { development: true, ready: true },
+};
+function replyEntry(response, route, options = {}) {
+  const value = options.value ?? entryResponses[route];
+  response.writeHead(options.status ?? 200, {
+    "Content-Type": route === "/workspace" ? "text/html" : "application/json",
+    "Cache-Control": "no-store, private",
+    ...options.headers,
+  });
+  response.end(typeof value === "string" ? value : JSON.stringify(value));
+}
+async function withEntryServer(handle, operation) {
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push(request.url);
+    assert.equal(request.method, "GET");
+    assert.equal(request.headers.cookie, undefined);
+    assert.equal(request.headers.authorization, undefined);
+    handle(request, response);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await operation("http://127.0.0.1:" + server.address().port, requests);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+test("entry readiness is sequential and cannot report READY before session, personas and SQL checks finish", async () => {
+  const pending = [];
+  const stages = [];
+  await withEntryServer(
+    (_request, response) => pending.push(response),
+    async (origin, requests) => {
+      const completion = verifyLocalEntryReadiness({
+        origin,
+        timeoutMs: 2000,
+        onProgress: (stage) => stages.push(stage),
+      });
+      for (const [index, route] of Object.keys(entryResponses).entries()) {
+        while (pending.length <= index) await new Promise((resolve) => setTimeout(resolve, 2));
+        assert.deepEqual(requests, Object.keys(entryResponses).slice(0, index + 1));
+        assert.equal(
+          stages.some((stage) => stage.state === "READY"),
+          false,
+        );
+        replyEntry(pending[index], route);
+      }
+      assert.equal((await completion).state, "READY");
+      assert.equal(stages.filter((stage) => stage.state === "READY").length, 1);
+      assert.equal(stages.at(-2).state, "CHECKING_DATABASE");
+    },
+  );
+});
+
+for (const [description, route, options] of [
+  [
+    "authenticated session",
+    "/api/auth/session",
+    { value: { ...entryResponses["/api/auth/session"], authenticated: true } },
+  ],
+  [
+    "session data",
+    "/api/auth/session",
+    { value: { ...entryResponses["/api/auth/session"], csrfToken: "SECRET_CANARY" } },
+  ],
+  ["absent local mode", "/api/auth/session", { value: { authenticated: false } }],
+  [
+    "cookie issuance",
+    "/api/auth/local/config",
+    { headers: { "Set-Cookie": "secret=SECRET_CANARY" } },
+  ],
+  [
+    "empty personas",
+    "/api/auth/local/config",
+    { value: { ...entryResponses["/api/auth/local/config"], personas: [] } },
+  ],
+  [
+    "unknown persona",
+    "/api/auth/local/config",
+    {
+      value: {
+        ...entryResponses["/api/auth/local/config"],
+        personas: [{ key: "attacker", label: "Untrusted" }],
+      },
+    },
+  ],
+  [
+    "duplicate personas",
+    "/api/auth/local/config",
+    {
+      value: {
+        ...entryResponses["/api/auth/local/config"],
+        personas: Array(2).fill({ key: "owner-alpha", label: "Alpha" }),
+      },
+    },
+  ],
+  ["malformed JSON", "/api/auth/local/status", { value: "{SECRET_CANARY" }],
+  ["false SQL readiness", "/api/auth/local/status", { value: { development: true, ready: false } }],
+  ["cacheable auth", "/api/auth/session", { headers: { "Cache-Control": "public" } }],
+  ["redirect", "/api/auth/session", { status: 302, headers: { Location: "/SECRET_CANARY" } }],
+]) {
+  test(
+    "entry readiness refuses " + description + " without leaking contents or retrying",
+    async () => {
+      const stages = [];
+      await withEntryServer(
+        (request, response) =>
+          replyEntry(response, request.url, request.url === route ? options : {}),
+        async (origin, requests) => {
+          await assert.rejects(
+            verifyLocalEntryReadiness({
+              origin,
+              timeoutMs: 2000,
+              onProgress: (stage) => stages.push(stage),
+            }),
+            (error) => {
+              assert.equal(error.details.route, route);
+              assert.equal(JSON.stringify(error).includes("SECRET_CANARY"), false);
+              assert.equal(error.message.includes("SECRET_CANARY"), false);
+              return true;
+            },
+          );
+          assert.equal(stages.at(-1).state, "FAILED");
+          assert.equal(
+            stages.some((stage) => stage.state === "READY"),
+            false,
+          );
+          assert.equal(requests.filter((path) => path === route).length, 1);
+          assert.equal(
+            requests.some((path) => path.includes("SECRET_CANARY")),
+            false,
+          );
+        },
+      );
+    },
+  );
+}
+
+test("entry failure retains only fixed route, HTTP status, allowed code and valid correlation", async () => {
+  const correlationId = "40000000-0000-4000-8000-000000000001";
+  await withEntryServer(
+    (request, response) =>
+      replyEntry(
+        response,
+        request.url,
+        request.url === "/api/auth/local/status"
+          ? {
+              status: 503,
+              value: {
+                code: "CPL_LOCAL_SCHEMA_NOT_READY",
+                correlationId,
+                message: "SECRET_CANARY",
+                sql: "PRIVATE_SQL",
+              },
+            }
+          : {},
+      ),
+    async (origin) => {
+      await assert.rejects(verifyLocalEntryReadiness({ origin }), (error) => {
+        assert.deepEqual(error.details, {
+          state: "FAILED",
+          route: "/api/auth/local/status",
+          category: "HTTP_ERROR",
+          status: 503,
+          code: "CPL_LOCAL_SCHEMA_NOT_READY",
+          correlationId,
+        });
+        assert.equal(error.message.includes("SECRET_CANARY"), false);
+        assert.equal(error.message.includes("PRIVATE_SQL"), false);
+        return true;
+      });
+    },
+  );
+});
+
+test("compiler HTTP failure is terminal and untrusted error code/correlation are not echoed", async () => {
+  await withEntryServer(
+    (_request, response) =>
+      replyEntry(response, "/workspace", {
+        status: 500,
+        value: {
+          code: "SECRET_CANARY",
+          correlationId: "SECRET_CANARY",
+          message: "Manifest file is empty",
+        },
+      }),
+    async (origin, requests) => {
+      await assert.rejects(verifyLocalEntryReadiness({ origin }), (error) => {
+        assert.deepEqual(error.details, {
+          state: "FAILED",
+          route: "/workspace",
+          category: "HTTP_ERROR",
+          status: 500,
+        });
+        assert.equal(error.message.includes("SECRET_CANARY"), false);
+        return true;
+      });
+      assert.equal(requests.length, 1);
+    },
+  );
+});
+
+test("entry requests share one deadline rather than restarting the budget for each route", async () => {
+  const timers = [];
+  try {
+    await withEntryServer(
+      (request, response) => {
+        timers.push(setTimeout(() => replyEntry(response, request.url), 100));
+      },
+      async (origin, requests) => {
+        await assert.rejects(verifyLocalEntryReadiness({ origin, timeoutMs: 170 }), (error) => {
+          assert.equal(error.details.category, "TIMEOUT");
+          return true;
+        });
+        assert.ok(requests.length < 4);
+      },
+    );
+  } finally {
+    timers.forEach(clearTimeout);
+  }
+});
+
+test("entry readiness cancellation and oversized body do not declare READY", async () => {
+  const controller = new AbortController();
+  await withEntryServer(
+    () => controller.abort(),
+    async (origin) => {
+      await assert.rejects(
+        verifyLocalEntryReadiness({ origin, signal: controller.signal }),
+        (error) => error.details.category === "CANCELLED",
+      );
+    },
+  );
+  await withEntryServer(
+    (_request, response) =>
+      replyEntry(response, "/workspace", {
+        value: "CPL Command Center" + "X".repeat(262_144),
+      }),
+    async (origin) => {
+      await assert.rejects(
+        verifyLocalEntryReadiness({ origin }),
+        (error) => error.details.category === "RESPONSE_FAILED",
+      );
+    },
+  );
+});
+
+test("Doctor checks current SQL readiness instead of trusting the owner's prior READY", async () => {
+  let healthy = true;
+  await withEntryServer(
+    (request, response) =>
+      replyEntry(
+        response,
+        request.url,
+        !healthy && request.url === "/api/auth/local/status"
+          ? {
+              status: 503,
+              value: { code: "CPL_LOCAL_DATABASE_UNAVAILABLE" },
+            }
+          : {},
+      ),
+    async (origin, requests) => {
+      const launcher = { readiness: { state: "READY" } };
+      assert.equal((await checkLocalLauncherReadiness(launcher, { origin })).state, "READY");
+      healthy = false;
+      const result = await checkLocalLauncherReadiness(launcher, { origin });
+      assert.equal(result.state, "FAILED");
+      assert.equal(result.code, "CPL_LOCAL_DATABASE_UNAVAILABLE");
+      assert.deepEqual(requests, [...Object.keys(entryResponses), ...Object.keys(entryResponses)]);
+    },
+  );
+});
+
+test("Doctor does not warm routes for stopped or still-compiling owners", async () => {
+  await withEntryServer(
+    (_request, response) => response.end(),
+    async (origin, requests) => {
+      assert.deepEqual(await checkLocalLauncherReadiness(null, { origin }), { state: "STOPPED" });
+      assert.equal(
+        (await checkLocalLauncherReadiness({ readiness: { state: "CHECKING_ENTRY" } }, { origin }))
+          .state,
+        "CHECKING_ENTRY",
+      );
+      assert.equal(requests.length, 0);
+    },
+  );
 });

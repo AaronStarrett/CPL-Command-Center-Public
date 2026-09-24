@@ -105,6 +105,7 @@ function content(): CplCommercialContent {
 }
 function template(): CplCommercialTemplate {
   return {
+    currency: "USD",
     id: "template-1",
     organizationId: org,
     name: "Fictional service template",
@@ -426,6 +427,42 @@ describe("structured commercial workspace", () => {
       idempotencyKey: expect.any(String),
     });
   });
+  it("displays captured catalog and typed intake answers without substituting current company settings", async () => {
+    const id = "123e4567-e89b-12d3-a456-426614174999";
+    record.versions[0]!.sourceLead.configuration = {
+      catalog: {
+        id,
+        revision: 2,
+        code: "INSPECT",
+        name: "Saved inspection",
+        description: "Saved service",
+        unit: "visit",
+        unitPriceMinor: 10000,
+        currency: "CAD",
+        workflowKey: "fixed-key",
+      },
+      policyVersion: 3,
+      reviewedPolicyVersion: 3,
+      policy: {
+        requiredFields: [],
+        customFields: [
+          {
+            id,
+            label: "Access confirmed at capture",
+            type: "boolean",
+            required: true,
+            active: true,
+            options: [],
+          },
+        ],
+      },
+      customValues: { [id]: false },
+    };
+    await select();
+    expect(screen.getByText("Captured company intake configuration")).toBeVisible();
+    expect(screen.getByText(/Service: Saved inspection.*revision 2.*CAD/)).toBeVisible();
+    expect(screen.getByText("Access confirmed at capture").parentElement).toHaveTextContent("No");
+  });
 
   it("keeps the idempotency key on an ambiguous creation retry", async () => {
     data.proposals = [];
@@ -662,23 +699,50 @@ describe("structured commercial workspace", () => {
   });
 
   it("creates a new immutable template copy with edited catalog pricing", async () => {
+    data.templates[0]!.currency = "EUR";
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Templates & services" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Edit a new copy of Fictional service template" }),
     );
     expect(screen.getByLabelText("Template name")).toHaveValue("Fictional service template — copy");
+    expect(screen.getByLabelText(/Template price currency/)).toHaveValue("EUR");
     fireEvent.change(screen.getByLabelText("Service 1 unit price"), { target: { value: "75.25" } });
     fireEvent.click(screen.getByRole("button", { name: "Save new template" }));
     await screen.findByText(/New company template saved/);
     expect(calls("/templates")[0]![1]).toMatchObject({
       input: {
         name: "Fictional service template — copy",
+        currency: "EUR",
         catalog: [{ serviceCode: "TEST", unitPriceMinor: 7525 }],
       },
       idempotencyKey: expect.any(String),
     });
     expect(data.templates[0]!.catalog[0]!.unitPriceMinor).toBe(5000);
+  });
+  it("requires deliberate currency confirmation for a legacy template under a changed company default", async () => {
+    data.proposals = [];
+    delete data.templates[0]!.currency;
+    data.branding.defaultCurrency = "CAD";
+    await open({ leadId });
+    fireEvent.change(screen.getByLabelText("Proposal template"), {
+      target: { value: "template-1" },
+    });
+    const create = screen.getByRole("button", { name: "Create proposal", exact: true });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Legacy template price currency"), {
+      target: { value: "USD" },
+    });
+    expect(create).toBeDisabled();
+    fireEvent.click(
+      screen.getByLabelText("I reviewed these template prices and confirm their currency."),
+    );
+    fireEvent.click(create);
+    await screen.findByLabelText("Proposal title");
+    expect(calls("/proposals")[0]![1]).toMatchObject({
+      legacyTemplateCurrency: "USD",
+      templateId: "template-1",
+    });
   });
 
   it("rejects oversized and non-raster logo files before saving branding", async () => {

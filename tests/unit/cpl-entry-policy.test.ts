@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { cplEntryDecision } from "../../apps/web/lib/cpl-entry-policy";
 describe("CPL product entry gate", () => {
+  it("opens source evidence and immutable mapping reads only with a product runtime", () => {
+    const id = "123e4567-e89b-12d3-a456-426614174000";
+    for (const route of [
+      `/api/cpl-integrations/receipts/${id}/evidence`,
+      `/api/cpl-integrations/mappings/${id}`,
+    ]) {
+      expect(cplEntryDecision(route, "GET", "development", false, true)).toBe("allow");
+      expect(cplEntryDecision(route, "GET", "production", true)).toBe("allow");
+      expect(cplEntryDecision(route, "GET", "production", false)).toBe("unavailable");
+    }
+    for (const route of [
+      `/api/cpl-integrations/receipts/${id}/evidence/private-file`,
+      `/api/cpl-integrations/mappings/${id}/delete`,
+      "/api/cpl-integrations/evidence/private-file",
+    ])
+      expect(cplEntryDecision(route, "GET", "development", false, true)).toBe("unavailable");
+  });
   it("opens bounded tenant automation and delivery preparation without provider sending or arbitrary execution", () => {
     const id = "123e4567-e89b-12d3-a456-426614174000",
       project = `/api/cpl-delivery/projects/${id}`,

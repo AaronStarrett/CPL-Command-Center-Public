@@ -197,7 +197,7 @@ realPostgresDescribe("Phase 1.3.4 disposable real PostgreSQL acceptance", () => 
     expect(secondMigration.applied).toEqual([]);
     expect(secondMigration.alreadyApplied).toHaveLength(firstMigration.applied.length);
     await expect(verifyMigrations(scopedDatabase)).resolves.toMatchObject({
-      current: "0035_cpl_delivery_closeout.sql",
+      current: "0039_cpl_durable_inbound.sql",
     });
 
     const firstSeed = await seedSystemDatabase(scopedDatabase);

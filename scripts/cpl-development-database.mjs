@@ -5,6 +5,7 @@ import path from "node:path";
 import net from "node:net";
 import { WindowsDpapiCurrentUserProtector } from "./phase134/production-secrets.mjs";
 import { REPOSITORY_ID } from "./repository-boundary.mjs";
+import { loadLocalIntegrationMaterial } from "./cpl-local-integration-secrets.mjs";
 
 export const DEVELOPMENT_DATABASE_PORT = 55433;
 export const DEVELOPMENT_DATABASE_NAME = "cpl_local_development";
@@ -187,9 +188,26 @@ export async function startDevelopmentDatabase({
     process.env.TSX_DISABLE_CACHE = "1";
     const { tsImport } = await import("tsx/esm/api");
     const module = await tsImport("./cpl-development-runtime.ts", import.meta.url);
-    runtime = await module.prepareDevelopmentRuntime(settings);
+    const integrationEnvironment = {
+      ...environment,
+      CPL_LOCAL_DEVELOPMENT_AUTH: "true",
+      CPL_HOSTED_ENABLED: "false",
+      CPL_INTEGRATION_PROVIDER_MODE: "local_fixture",
+      CPL_LOCAL_INTEGRATION_MATERIAL: loadLocalIntegrationMaterial({ root, cacheRoot }),
+    };
+    runtime = await module.prepareDevelopmentRuntime(settings, integrationEnvironment);
     onProgress("Local PostgreSQL ready. Synthetic development records stay on the SSD.");
-    return { webUrl: settings.webUrl, stop, startJobs: runtime.startJobs, status: runtime.status };
+    return {
+      webUrl: settings.webUrl,
+      stop,
+      startJobs: runtime.startJobs,
+      status: runtime.status,
+      integrationEnvironment: {
+        CPL_LOCAL_SCHEMA_MANIFEST: JSON.stringify(runtime.expectedSchema),
+        CPL_INTEGRATION_PROVIDER_MODE: "local_fixture",
+        CPL_LOCAL_INTEGRATION_MATERIAL: integrationEnvironment.CPL_LOCAL_INTEGRATION_MATERIAL,
+      },
+    };
   } catch (error) {
     await stop();
     const diagnostic = String(error?.message ?? "Unknown local initialization error")

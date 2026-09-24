@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
 import { verifyHostedDatabaseRole } from "./hosted-database-role.js";
+import {
+  readLocalDevelopmentConfiguration,
+  CPL_LOCAL_IDENTITY_ISSUER,
+  CPL_LOCAL_PERSONAS,
+} from "@bea/security/hosted";
 
 export const CPL_MODULE_KEYS = [
   "intake-job-tracker",
@@ -28,6 +33,8 @@ export type CplTenantPermission =
   | "records:read"
   | "records:write"
   | "leads:review"
+  | "leads:read"
+  | "commercial:read"
   | "commercial:write"
   | "commercial:review"
   | "commercial:award"
@@ -48,6 +55,15 @@ export type CplTenantPermission =
   | "settings:read"
   | "settings:write"
   | "members:manage"
+  | "directory:read"
+  | "directory:write"
+  | "company:configure"
+  | "audit:read"
+  | "integrations:read"
+  | "integrations:configure"
+  | "integrations:operate"
+  | "sources:read"
+  | "sources:reprocess"
   | "jobs:run";
 export type CplNamespaceKind = "objects" | "vectors" | "cache" | "jobs" | "exports" | "credentials";
 type Row = Record<string, unknown>;
@@ -68,6 +84,9 @@ export interface CplTenantRepositoryOptions {
   readonly identityVerifier?: CplIdentityVerifier;
   readonly trustedIssuers?: readonly string[];
   readonly now?: () => Date;
+  /** Set only by the guarded local runtime, never request data. The capability
+   * independently verifies its environment, physical DB and fixed operator. */
+  readonly localDevelopmentAdministration?: boolean;
 }
 export interface CplTenantAccess {
   readonly organizationId: string;
@@ -103,6 +122,8 @@ const permissionRoles: Readonly<Record<CplTenantPermission, readonly CplTenantRo
   "records:read": CPL_TENANT_ROLES,
   "records:write": ["owner", "admin", "manager", "member", "field-user"],
   "leads:review": ["owner", "admin", "manager", "reviewer"],
+  "leads:read": ["owner", "admin", "manager", "reviewer", "member"],
+  "commercial:read": ["owner", "admin", "manager", "reviewer", "member"],
   "commercial:write": ["owner", "admin", "manager", "member"],
   "commercial:review": ["owner", "admin", "manager", "reviewer"],
   "commercial:award": ["owner", "admin", "manager"],
@@ -123,6 +144,15 @@ const permissionRoles: Readonly<Record<CplTenantPermission, readonly CplTenantRo
   "settings:read": CPL_TENANT_ROLES,
   "settings:write": administratorRoles,
   "members:manage": administratorRoles,
+  "directory:read": ["owner", "admin", "manager", "member"],
+  "directory:write": ["owner", "admin", "manager", "member"],
+  "company:configure": administratorRoles,
+  "audit:read": administratorRoles,
+  "integrations:read": ["owner", "admin", "manager", "reviewer"],
+  "integrations:configure": administratorRoles,
+  "integrations:operate": ["owner", "admin", "manager"],
+  "sources:read": ["owner", "admin", "manager", "reviewer"],
+  "sources:reprocess": ["owner", "admin", "manager"],
   "jobs:run": ["owner", "admin", "manager"],
 };
 export function cplTenantRoleAllows(role: CplTenantRole, permission: CplTenantPermission): boolean {
@@ -266,7 +296,7 @@ export class SqlCplTenantRepository {
   private async session(executor: SqlExecutor, token: string): Promise<Row> {
     const result = await executor.query<Row>(
       `SELECT s.id AS session_id,s.identity_id,s.expires_at,s.revoked_at,s.mfa_verified,s.authenticated_at,s.mfa_verified_at,
-              i.issuer,i.subject,i.status AS identity_status
+              i.issuer,i.subject,i.display_name,i.status AS identity_status
        FROM cpl_sessions s JOIN cpl_identities i ON i.id=s.identity_id WHERE s.token_hash=$1 FOR SHARE OF s,i`,
       [tokenHash(token)],
     );
@@ -383,6 +413,110 @@ export class SqlCplTenantRepository {
     operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
   ): Promise<T> {
     return this.authenticated(request, permission, operation);
+  }
+  /** Administration acquires its serialization lock BEFORE any membership lock.
+   * Otherwise two owners removing one another can deadlock while each holds its
+   * own membership FOR SHARE. Ordinary operations retain live membership locks. */
+  async withAdministrationTransaction<T>(
+    request: CplTenantRequest,
+    operation: (executor: SqlExecutor, access: CplTenantAccess) => Promise<T>,
+  ): Promise<T> {
+    const organizationId = uuid(request.organizationId);
+    return this.database.transaction(async (executor) => {
+      const session = await this.session(executor, request.sessionToken);
+      await executor.query("SELECT pg_advisory_xact_lock(hashtextextended($1,36))", [
+        organizationId,
+      ]);
+      const access = await this.member(
+        executor,
+        organizationId,
+        String(session.identity_id),
+        "members:manage",
+      );
+      return operation(executor, access);
+    });
+  }
+  /** Session-only composition for accepting an invitation before membership and
+   * for a module-independent bootstrap. No company authority is inferred. */
+  async withSessionTransaction<T>(
+    sessionToken: string,
+    operation: (
+      executor: SqlExecutor,
+      session: { identityId: string; displayName: string; issuer: string; subject: string },
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.database.transaction(async (executor) => {
+      const s = await this.session(executor, sessionToken);
+      await executor.query(
+        "SELECT set_config('cpl.identity_id',$1,true),set_config('cpl.organization_id','',true)",
+        [s.identity_id],
+      );
+      return operation(executor, {
+        identityId: String(s.identity_id),
+        displayName: String(s.display_name),
+        issuer: String(s.issuer),
+        subject: String(s.subject),
+      });
+    });
+  }
+  async verifyLocalAdministrationBoundary(executor: SqlExecutor): Promise<boolean> {
+    if (!this.options.localDevelopmentAdministration) return false;
+    // Reuse production/process/URL controls; a passed flag alone has no authority.
+    readLocalDevelopmentConfiguration();
+    await verifyHostedDatabaseRole(this.database, "web", executor);
+    const result =
+      await executor.query<Row>(`SELECT current_database() AS database_name,current_user AS role_name,host(inet_server_addr()) AS server_address,inet_server_port() AS server_port,
+      (SELECT purpose FROM cpl_local_development_marker WHERE singleton=TRUE) AS purpose,
+      EXISTS(SELECT 1 FROM cpl_platform_owner_binding) AS hosted_owner_exists,
+      has_table_privilege(current_user,'cpl_local_development_marker','INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER') AS marker_writable`);
+    const row = result.rows[0];
+    if (
+      !row ||
+      row.database_name !== "cpl_local_development" ||
+      row.role_name !== "cpl_local_web" ||
+      row.server_address !== "127.0.0.1" ||
+      row.server_port !== 55433 ||
+      row.purpose !== "local-development" ||
+      row.hosted_owner_exists !== false ||
+      row.marker_writable !== false
+    )
+      fail("CPL_LOCAL_DEVELOPMENT_REFUSED");
+    return true;
+  }
+  async withPlatformAdministrationTransaction<T>(
+    sessionToken: string,
+    operation: (
+      executor: SqlExecutor,
+      actor: { identityId: string; assurance: "local-development" | "verified-mfa" },
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.database.transaction(async (executor) => {
+      const local = await this.verifyLocalAdministrationBoundary(executor);
+      const session = local
+        ? await this.session(executor, sessionToken)
+        : await this.platformAdministrator(executor, sessionToken);
+      if (local) {
+        const operator = CPL_LOCAL_PERSONAS.find((p) => p.platformOperator)!;
+        const verified = await executor.query<Row>(
+          `SELECT i.id FROM cpl_identities i JOIN cpl_platform_administrators a ON a.identity_id=i.id WHERE i.id=$1 AND i.issuer=$2 AND i.subject=$3 AND i.email=$4 AND i.email_verified=TRUE AND i.hosted_domain IS NULL AND i.status='active' AND a.status='active' FOR SHARE OF i,a`,
+          [session.identity_id, CPL_LOCAL_IDENTITY_ISSUER, operator.subject, operator.email],
+        );
+        if (
+          !verified.rows.length ||
+          session.mfa_verified !== false ||
+          session.mfa_verified_at !== null
+        )
+          fail("CPL_PLATFORM_ADMIN_REQUIRED");
+      }
+      await executor.query(
+        "SELECT set_config('cpl.identity_id',$1,true),set_config('cpl.organization_id','',true)",
+        [session.identity_id],
+      );
+      return operation(executor, {
+        identityId: String(session.identity_id),
+        assurance: local ? "local-development" : "verified-mfa",
+      });
+    });
   }
   /** Worker-only composition: no session is issued or impersonated. A SQL function
    * locks live authority using an active queue fence; each delayed action gets its
@@ -529,7 +663,7 @@ export class SqlCplTenantRepository {
       for (const row of memberships.rows) {
         await this.scope(executor, String(row.organization_id), String(session.identity_id));
         const result = await executor.query<Row>(
-          "SELECT * FROM cpl_organizations WHERE id=$1 AND status='active'",
+          "SELECT o.id,o.slug,o.status,coalesce(nullif(btrim(s.value_json->>'displayName'),''),o.display_name) AS display_name FROM cpl_organizations o LEFT JOIN cpl_organization_settings s ON s.organization_id=o.id AND s.setting_key='company.profile' WHERE o.id=$1 AND o.status='active'",
           [row.organization_id],
         );
         if (result.rows[0]) organizations.push(organization(result.rows[0]));
@@ -584,9 +718,10 @@ export class SqlCplTenantRepository {
   }
   async getOrganization(request: CplTenantRequest): Promise<CplOrganization> {
     return this.authenticated(request, "settings:read", async (executor) => {
-      const result = await executor.query<Row>("SELECT * FROM cpl_organizations WHERE id=$1", [
-        request.organizationId,
-      ]);
+      const result = await executor.query<Row>(
+        "SELECT o.id,o.slug,o.status,coalesce(nullif(btrim(s.value_json->>'displayName'),''),o.display_name) AS display_name FROM cpl_organizations o LEFT JOIN cpl_organization_settings s ON s.organization_id=o.id AND s.setting_key='company.profile' WHERE o.id=$1",
+        [request.organizationId],
+      );
       return organization(result.rows[0]!);
     });
   }
@@ -608,6 +743,9 @@ export class SqlCplTenantRepository {
   private async platformAdministrator(executor: SqlExecutor, sessionToken: string): Promise<Row> {
     const session = await this.session(executor, sessionToken);
     if (
+      // Historical local sessions once carried synthetic MFA. They must never
+      // satisfy the production authority gate, including through old endpoints.
+      session.issuer === CPL_LOCAL_IDENTITY_ISSUER ||
       session.mfa_verified !== true ||
       session.mfa_verified_at == null ||
       this.now().getTime() - instant(session.mfa_verified_at) > 15 * 60_000 ||
@@ -736,11 +874,11 @@ export class SqlCplTenantRepository {
       fail("CPL_INVALID_INVITATION_ROLE");
     const token = issueToken();
     const expiresAt = expires(this.now(), request.expiresInMinutes ?? 1_440, 10_080);
-    return this.authenticated(request, "members:manage", async (executor, access) => {
+    return this.withAdministrationTransaction(request, async (executor, access) => {
       if (request.role === "admin" && access.role !== "owner") fail();
       const id = randomUUID();
       await executor.query(
-        "INSERT INTO cpl_invitations (id,organization_id,token_hash,recipient_issuer,recipient_subject,role,invited_by_identity_id,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        "INSERT INTO cpl_invitations (id,organization_id,token_hash,recipient_issuer,recipient_subject,role,invited_by_identity_id,expires_at,inviter_membership_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         [
           id,
           access.organizationId,
@@ -750,6 +888,7 @@ export class SqlCplTenantRepository {
           request.role,
           access.identityId,
           expiresAt,
+          access.membershipVersion,
         ],
       );
       await this.audit(executor, access, "invitation.created", id);
@@ -764,8 +903,11 @@ export class SqlCplTenantRepository {
       const session = await this.session(executor, request.sessionToken);
       const identityId = String(session.identity_id);
       await this.scope(executor, organizationId, identityId);
+      await executor.query("SELECT pg_advisory_xact_lock(hashtextextended($1,36))", [
+        organizationId,
+      ]);
       const result = await executor.query<Row>(
-        `SELECT i.*,o.status AS organization_status,m.status AS inviter_status,m.role AS inviter_role,u.status AS inviter_identity_status
+        `SELECT i.*,o.status AS organization_status,m.status AS inviter_status,m.role AS inviter_role,m.version AS inviter_current_version,u.status AS inviter_identity_status
          FROM cpl_invitations i JOIN cpl_organizations o ON o.id=i.organization_id
          JOIN cpl_memberships m ON m.organization_id=i.organization_id AND m.identity_id=i.invited_by_identity_id
          JOIN cpl_identities u ON u.id=m.identity_id
@@ -780,6 +922,7 @@ export class SqlCplTenantRepository {
         invitation.organization_status !== "active" ||
         invitation.inviter_status !== "active" ||
         invitation.inviter_identity_status !== "active" ||
+        invitation.inviter_membership_version !== invitation.inviter_current_version ||
         !administratorRoles.includes(invitation.inviter_role as CplTenantRole) ||
         (invitation.role === "admin" && invitation.inviter_role !== "owner") ||
         instant(invitation.expires_at) <= this.now().getTime() ||
@@ -794,10 +937,10 @@ export class SqlCplTenantRepository {
         [organizationId, identityId, invitation.role],
       );
       if (!inserted.rows[0]) fail("CPL_INVITATION_UNAVAILABLE");
-      await executor.query("UPDATE cpl_invitations SET redeemed_at=$2 WHERE id=$1", [
-        invitation.id,
-        this.now().toISOString(),
-      ]);
+      await executor.query(
+        "UPDATE cpl_invitations SET redeemed_at=$2,redeemed_by_identity_id=$3,redeemed_membership_version=$4,version=version+1 WHERE id=$1",
+        [invitation.id, this.now().toISOString(), identityId, inserted.rows[0].version],
+      );
       const access = {
         organizationId,
         identityId,
@@ -811,10 +954,10 @@ export class SqlCplTenantRepository {
   async revokeInvitation(
     request: CplTenantRequest & { readonly invitationId: string },
   ): Promise<void> {
-    await this.authenticated(request, "members:manage", async (executor, access) => {
+    await this.withAdministrationTransaction(request, async (executor, access) => {
       const result = await executor.query<Row>(
-        "UPDATE cpl_invitations SET revoked_at=$3 WHERE organization_id=$1 AND id=$2 AND redeemed_at IS NULL RETURNING id",
-        [access.organizationId, uuid(request.invitationId), this.now().toISOString()],
+        "UPDATE cpl_invitations SET revoked_at=$3,version=version+1 WHERE organization_id=$1 AND id=$2 AND redeemed_at IS NULL AND (role<>'admin' OR $4='owner') RETURNING id",
+        [access.organizationId, uuid(request.invitationId), this.now().toISOString(), access.role],
       );
       if (!result.rows[0]) fail();
       await this.audit(executor, access, "invitation.revoked", request.invitationId);
@@ -828,7 +971,7 @@ export class SqlCplTenantRepository {
   ): Promise<void> {
     if (!["active", "suspended", "removed"].includes(request.status))
       fail("CPL_INVALID_MEMBERSHIP");
-    await this.authenticated(request, "members:manage", async (executor, access) => {
+    await this.withAdministrationTransaction(request, async (executor, access) => {
       const result = await executor.query<Row>(
         "UPDATE cpl_memberships SET status=$3,version=version+1 WHERE organization_id=$1 AND identity_id=$2 AND role <> 'owner' AND (role <> 'admin' OR $4='owner') RETURNING identity_id",
         [access.organizationId, uuid(request.identityId), request.status, access.role],

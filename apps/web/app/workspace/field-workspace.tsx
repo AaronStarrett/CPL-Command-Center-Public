@@ -144,7 +144,9 @@ export function FieldWorkspace({
   onBusy,
   onOpenVisit,
 }: {
-  project: CplCommercialProject;
+  project: Pick<CplCommercialProject, "id" | "reference"> & {
+    snapshot?: CplCommercialProject["snapshot"];
+  };
   visit: CplVisit;
   members?: CplExecutionMember[];
   organizationId: string;
@@ -435,7 +437,9 @@ export function FieldWorkspace({
         <p className={styles.eyebrow}>FIELD WORK · {project.reference}</p>
         <h3>{data?.visit.purpose ?? visit.purpose}</h3>
         <p>
-          {project.snapshot.version.sourceLead.fields.customerName} ·{" "}
+          {project.snapshot?.version.sourceLead.fields.customerName
+            ? `${project.snapshot.version.sourceLead.fields.customerName} · `
+            : ""}
           {data?.visit.siteName || visit.siteName}
         </p>
         <p className={forms.hint}>
@@ -448,7 +452,9 @@ export function FieldWorkspace({
         </p>
         <details>
           <summary>Visit scope & access</summary>
-          <p className={styles.document}>{project.snapshot.version.content.scope}</p>
+          {project.snapshot ? (
+            <p className={styles.document}>{project.snapshot.version.content.scope}</p>
+          ) : null}
           <p className={styles.document}>
             Internal access instructions:{" "}
             {data?.visit.accessInstructions || visit.accessInstructions || "Not recorded"}
@@ -522,7 +528,9 @@ export function FieldWorkspace({
         </p>
       ) : (
         <>
-          {!canEdit ? (
+          {!canEdit && data.permissions.canAttachTemplate && !data.template ? (
+            <p>Attach a checklist template to begin field records for this visit.</p>
+          ) : !canEdit ? (
             <p className={styles.warning}>
               Field records are read only for your role or this visit status. Existing evidence
               remains available.

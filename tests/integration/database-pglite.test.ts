@@ -58,6 +58,10 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0033_cpl_reviewed_reports.sql",
       "0034_cpl_automation_recipes.sql",
       "0035_cpl_delivery_closeout.sql",
+      "0036_cpl_company_administration.sql",
+      "0037_cpl_company_configuration.sql",
+      "0038_cpl_company_integrations.sql",
+      "0039_cpl_durable_inbound.sql",
     ]);
     expect((await migrateDatabase(database)).alreadyApplied).toEqual([
       "0001_phase0_foundation.sql",
@@ -95,6 +99,10 @@ describe("shared PostgreSQL migration in PGlite", () => {
       "0033_cpl_reviewed_reports.sql",
       "0034_cpl_automation_recipes.sql",
       "0035_cpl_delivery_closeout.sql",
+      "0036_cpl_company_administration.sql",
+      "0037_cpl_company_configuration.sql",
+      "0038_cpl_company_integrations.sql",
+      "0039_cpl_durable_inbound.sql",
     ]);
     await seedDatabase(database);
     await seedDatabase(database);

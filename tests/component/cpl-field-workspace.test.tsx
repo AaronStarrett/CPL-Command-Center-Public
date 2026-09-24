@@ -568,6 +568,26 @@ describe("tenant field workspace", () => {
       answers: [expect.objectContaining({ value: 3.25, photoIds: [photoId], result: "complete" })],
     });
   });
+  it("distinguishes an owner awaiting checklist attachment from a read-only field role", async () => {
+    data.template = null;
+    data.permissions.canEdit = false;
+    data.permissions.canAttachTemplate = true;
+    render(
+      <FieldWorkspace
+        project={project}
+        visit={data.visit}
+        organizationId={org}
+        request={request as CommercialRequest}
+        upload={upload as FieldUpload}
+        onDirty={dirty}
+        onBusy={busy}
+        onOpenVisit={openVisit}
+      />,
+    );
+    expect(await screen.findByText(/Attach a checklist template to begin/)).toBeVisible();
+    expect(screen.queryByText(/Field records are read only/)).not.toBeInTheDocument();
+  });
+
   it("creates a template version through ordinary fields without changing the visit snapshot", async () => {
     await open();
     await tab("Checklist templates");

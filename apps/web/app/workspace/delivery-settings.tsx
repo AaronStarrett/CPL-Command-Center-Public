@@ -167,8 +167,34 @@ export function ReadinessPolicy({
   onDirty: (v: boolean) => void;
   onSave: (input: CplCloseoutPolicyInput, expectedVersion: number) => Promise<boolean>;
 }) {
+  return (
+    <CompanyReadinessPolicy
+      policies={data.policies}
+      serviceKey={data.project.serviceKey}
+      allowed={data.permissions.canConfigure}
+      busy={busy}
+      onDirty={onDirty}
+      onSave={onSave}
+    />
+  );
+}
+export function CompanyReadinessPolicy({
+  policies,
+  serviceKey = "",
+  allowed,
+  busy,
+  onDirty,
+  onSave,
+}: {
+  policies: CplCloseoutPolicy[];
+  serviceKey?: string;
+  allowed: boolean;
+  busy: boolean;
+  onDirty: (value: boolean) => void;
+  onSave: (input: CplCloseoutPolicyInput, expectedVersion: number) => Promise<boolean>;
+}) {
   const blank = (): CplCloseoutPolicyInput => ({
-    serviceKey: data.project.serviceKey || "*",
+    serviceKey: serviceKey || "*",
     name: "",
     requireAward: false,
     requireWorkCompleted: false,
@@ -216,7 +242,7 @@ export function ReadinessPolicy({
         >
           New readiness policy
         </button>
-        {data.policies.map((policy) => (
+        {policies.map((policy) => (
           <button
             key={`${policy.serviceKey}:${policy.version}`}
             type="button"
@@ -244,7 +270,7 @@ export function ReadinessPolicy({
           })();
         }}
       >
-        <fieldset className={styles.fieldset} disabled={busy || !data.permissions.canConfigure}>
+        <fieldset className={styles.fieldset} disabled={busy || !allowed}>
           <label className={styles.field}>
             Policy name
             <input
@@ -264,8 +290,8 @@ export function ReadinessPolicy({
               onChange={(e) => change({ serviceKey: e.target.value })}
             />
             <small>
-              Use the exact service name, or * for the company fallback. Current project service:{" "}
-              {data.project.serviceKey || "Not recorded"}.
+              Use the fixed catalog workflow key or exact saved service name, or * for the explicit
+              company fallback.{serviceKey ? ` Current project service: ${serviceKey}.` : ""}
             </small>
           </label>
           {requirements.map(([key, label]) => (

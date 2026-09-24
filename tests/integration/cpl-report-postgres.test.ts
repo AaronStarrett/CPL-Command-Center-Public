@@ -584,7 +584,7 @@ suite("tenant reviewed reports on isolated real PostgreSQL", () => {
     idempotencyKey: randomUUID(),
   });
   it("migrates empty and verifies restricted runtime roles and immutable report configuration", async () => {
-    expect((await verifyMigrations(admin)).current).toBe("0035_cpl_delivery_closeout.sql");
+    expect((await verifyMigrations(admin)).current).toBe("0039_cpl_durable_inbound.sql");
     await expect(verifyHostedDatabaseRole(web, "web")).resolves.toMatchObject({ purpose: "web" });
     expect((await admin.query("SELECT count(*) FROM cpl_reports")).rows[0]?.count).toBe("0");
   });

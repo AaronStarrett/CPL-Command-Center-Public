@@ -251,14 +251,16 @@ export function TemplateSettings({
   allowed,
   onDirty,
   onSave,
+  defaultCurrency = "USD",
 }: {
   templates: CplCommercialTemplate[];
   busy: boolean;
   allowed: boolean;
   onDirty: (dirty: boolean) => void;
   onSave: (input: CplCommercialTemplateInput) => Promise<boolean>;
+  defaultCurrency?: string;
 }) {
-  const [draft, setDraft] = useState(emptyTemplate);
+  const [draft, setDraft] = useState({ ...emptyTemplate, currency: defaultCurrency });
   const [catalog, setCatalog] = useState<
     Array<CplCommercialTemplateInput["catalog"][number] & { editId: string; price: string }>
   >([]);
@@ -278,7 +280,7 @@ export function TemplateSettings({
   }
   function copy(template: CplCommercialTemplate) {
     navigation.navigate(() => {
-      setDraft({ ...template, name: `${template.name} — copy` });
+      setDraft({ ...template, currency: template.currency ?? "", name: `${template.name} — copy` });
       setCatalog(
         template.catalog.map((item, index) => ({
           ...item,
@@ -303,7 +305,7 @@ export function TemplateSettings({
       setError("");
       if (await onSave(input)) {
         setChanged(false);
-        setDraft(emptyTemplate);
+        setDraft({ ...emptyTemplate, currency: defaultCurrency });
         setCatalog([]);
       }
     } catch {
@@ -333,6 +335,8 @@ export function TemplateSettings({
             <p className={css.hint}>
               {template.catalog.length} catalog services · {template.sections.length} additional
               sections
+              {" · "}
+              {template.currency ?? "Legacy currency requires review when copied"}
             </p>
             <button
               className={styles.secondary}
@@ -368,6 +372,22 @@ export function TemplateSettings({
                 value={draft.name}
                 onChange={(event) => update("name", event.target.value)}
               />
+            </label>
+            <label className={styles.field}>
+              Template price currency
+              <select
+                required
+                value={draft.currency ?? ""}
+                onChange={(event) => update("currency", event.target.value)}
+              >
+                <option value="">Confirm the currency of these prices</option>
+                {CPL_COMMERCIAL_CURRENCIES.map((currency) => (
+                  <option key={currency}>{currency}</option>
+                ))}
+              </select>
+              <small>
+                The saved currency stays with these prices when company defaults change.
+              </small>
             </label>
             {(Object.entries(sectionLabels) as [keyof typeof sectionLabels, string][]).map(
               ([key, label]) => (

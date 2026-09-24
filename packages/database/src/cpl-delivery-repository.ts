@@ -668,6 +668,46 @@ export class SqlCplDeliveryRepository {
       return this.workspaceInTransaction(e, a, projectId);
     });
   }
+  /** Organization settings uses the existing policy versions without a dummy project. */
+  async saveCompanyPolicy(
+    request: CplTenantRequest & { expectedVersion: number; input: unknown; idempotencyKey: string },
+  ): Promise<CplCloseoutPolicy> {
+    const input = normalizeCplCloseoutPolicy(request.input),
+      expected = cplExecutionRevision(request.expectedVersion);
+    return this.scope(request, true, async (e, a) => {
+      requirePermission(a, "canConfigure");
+      const m = await mutation(e, a, "company-policy.save", request.idempotencyKey, {
+        expected,
+        input,
+      });
+      if (!m.replay) {
+        const current = await e.query<Row>(
+          "SELECT version FROM cpl_closeout_policies WHERE organization_id=$1 AND service_key=$2 ORDER BY version DESC LIMIT 1",
+          [a.organizationId, input.serviceKey],
+        );
+        if (Number(current.rows[0]?.version ?? 0) !== expected)
+          fail("CPL_DELIVERY_REVISION_CONFLICT");
+        await e.query(
+          "INSERT INTO cpl_closeout_policies(organization_id,service_key,version,snapshot,created_by_identity_id) VALUES($1,$2,$3,$4::jsonb,$5)",
+          [a.organizationId, input.serviceKey, expected + 1, JSON.stringify(input), a.identityId],
+        );
+        await audit(e, a, "closeout.policy-saved", m.id);
+      }
+      const row =
+        (
+          await e.query<Row>(
+            "SELECT * FROM cpl_closeout_policies WHERE organization_id=$1 AND service_key=$2 AND version=$3",
+            [a.organizationId, input.serviceKey, expected + 1],
+          )
+        ).rows[0] ?? fail("CPL_RECORD_NOT_FOUND");
+      return {
+        ...json<CplCloseoutPolicyInput>(row.snapshot),
+        version: Number(row.version),
+        createdAt: iso(row.created_at),
+        createdByIdentityId: String(row.created_by_identity_id),
+      };
+    });
+  }
   async saveCloseoutFacts(
     request: ProjectRequest & { expectedRevision: number; input: unknown; idempotencyKey: string },
   ): Promise<CplDeliveryWorkspace> {

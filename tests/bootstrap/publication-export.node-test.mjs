@@ -55,6 +55,10 @@ test("publication includes reviewed product guides without exporting acceptance 
     "docs/LOCAL_PHASE2_TESTING.md",
     "docs/LOCAL_PHASE3_TESTING.md",
     "docs/LOCAL_PHASE4_TESTING.md",
+    "docs/LOCAL_PHASE5_TESTING.md",
+    "docs/PHASE5_IMPLEMENTATION.md",
+    "docs/PHASE5_HANDOFF.md",
+    "docs/PRODUCT_ROADMAP.md",
     "docs/DEFERRED_HOSTING.md",
   ])
     assert.equal(publicationPathDecision(relative), "include", relative);
@@ -62,10 +66,12 @@ test("publication includes reviewed product guides without exporting acceptance 
     "docs/PROJECT_STATE.md",
     "docs/PRODUCT_PHASE3_CHECKPOINTS.md",
     "docs/PUBLICATION_REVIEW.md",
-    "docs/LOCAL_PHASE5_TESTING.md",
+    "docs/LOCAL_PHASE6_TESTING.md",
     ".data/evidence/original.png",
     ".data/local-development/credentials.dpapi",
     "product-phase4-20260923/acceptance.json",
+    "product-phase5-20260923/before-phase5.dump",
+    "product-phase5-20260923/browser-5a-checkpoint.json",
     "packages/artifacts/generated/customer-report.pdf",
   ])
     assert.notEqual(publicationPathDecision(relative), "include", relative);

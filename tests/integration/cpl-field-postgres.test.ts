@@ -408,7 +408,7 @@ suite("tenant field records on isolated real PostgreSQL", () => {
     };
   }
   it("applies forward field schema with no seeds and real restricted role protection", async () => {
-    expect((await verifyMigrations(admin)).current).toBe("0035_cpl_delivery_closeout.sql");
+    expect((await verifyMigrations(admin)).current).toBe("0039_cpl_durable_inbound.sql");
     await expect(verifyHostedDatabaseRole(web, "web")).resolves.toMatchObject({ purpose: "web" });
     expect((await admin.query("SELECT count(*) FROM cpl_field_templates")).rows[0]?.count).toBe(
       "0",

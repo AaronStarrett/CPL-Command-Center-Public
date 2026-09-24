@@ -188,7 +188,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
     await control?.close();
   }, 60_000);
   it("applies the forward migration with no identities, organizations or business seed", async () => {
-    expect((await verifyMigrations(admin)).current).toBe("0035_cpl_delivery_closeout.sql");
+    expect((await verifyMigrations(admin)).current).toBe("0039_cpl_durable_inbound.sql");
     for (const table of [
       "cpl_identities",
       "cpl_organizations",
@@ -931,6 +931,18 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
     const restoredAdmin = new PgDatabaseAdapter(connectionFor(config.adminUrl, restoredName));
     let restoredWeb: PgDatabaseAdapter | undefined;
     try {
+      // --no-acl intentionally omits the original PUBLIC revocations. A restore
+      // operator must restore these denials before granting a runtime role.
+      await expect(
+        configureHostedRuntimeRole(restoredAdmin, new URL(config.webUrl).username, "web"),
+      ).rejects.toThrow("CPL_INTEGRATION_SQL_CONTRACT_REFUSED");
+      const publicExecution = await restoredAdmin.query<{ count: string }>(
+        "SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=ANY(ARRAY['cpl_integration_oauth_context(text,text)'::regprocedure,'cpl_inbound_admission_budget(text)'::regprocedure,'cpl_inbound_public_context(text)'::regprocedure,'cpl_ingestion_lock_authority(uuid,uuid,uuid)'::regprocedure]) AND a.grantee=0 AND a.privilege_type='EXECUTE'",
+      );
+      expect(Number(publicExecution.rows[0]!.count)).toBe(4);
+      await restoredAdmin.execute(
+        "REVOKE ALL ON FUNCTION cpl_integration_oauth_context(text,text),cpl_inbound_admission_budget(text),cpl_inbound_public_context(text),cpl_ingestion_lock_authority(uuid,uuid,uuid) FROM PUBLIC",
+      );
       await configureHostedRuntimeRole(restoredAdmin, new URL(config.webUrl).username, "web");
       restoredWeb = new PgDatabaseAdapter(connectionFor(config.webUrl, restoredName));
       await verifyHostedDatabaseRole(restoredWeb, "web");
@@ -942,9 +954,7 @@ suite("hosted workflow against real PostgreSQL with restricted runtime roles", (
         "Manually revised scope",
       );
       expect(await repo.listLeads(requestB)).toEqual([]);
-      expect((await verifyMigrations(restoredAdmin)).current).toBe(
-        "0035_cpl_delivery_closeout.sql",
-      );
+      expect((await verifyMigrations(restoredAdmin)).current).toBe("0039_cpl_durable_inbound.sql");
     } finally {
       await restoredWeb?.close();
       await restoredAdmin.close();

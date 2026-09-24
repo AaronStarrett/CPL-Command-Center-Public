@@ -94,10 +94,10 @@ describePostgres("Phase 3.2A real PostgreSQL work-control concurrency", () => {
     });
     const migrated = await migrateDatabase(database);
     expect(migrated.applied.at(-1) ?? migrated.alreadyApplied.at(-1)).toBe(
-      "0035_cpl_delivery_closeout.sql",
+      "0039_cpl_durable_inbound.sql",
     );
     await expect(verifyMigrations(database)).resolves.toMatchObject({
-      current: "0035_cpl_delivery_closeout.sql",
+      current: "0039_cpl_durable_inbound.sql",
     });
     await seedDatabase(database);
   }, 60_000);

@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CplCommercialProject } from "@bea/domain/cpl-commercial";
 import {
@@ -261,6 +261,32 @@ describe("CPL project execution workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Awarded agreement" }));
     expect(screen.getByText("Original awarded scope · immutable example")).toBeVisible();
   });
+  it("retains batched native datetime change events through the next unrelated React field change", async () => {
+    await edit();
+    act(() => {
+      fireEvent.change(screen.getByLabelText("Planned start · visit timezone"), {
+        target: { value: "2026-10-06T09:15" },
+      });
+      fireEvent.change(screen.getByLabelText("Planned end · visit timezone"), {
+        target: { value: "2026-10-06T10:45" },
+      });
+      fireEvent.change(screen.getByLabelText("Visit purpose"), {
+        target: { value: "Confirmed fictional visit" },
+      });
+    });
+    expect(screen.getByLabelText("Planned start · visit timezone")).toHaveValue("2026-10-06T09:15");
+    expect(screen.getByLabelText("Planned end · visit timezone")).toHaveValue("2026-10-06T10:45");
+    fireEvent.click(screen.getByRole("button", { name: "Save visit" }));
+    await waitFor(() => expect(mutations()).toHaveLength(1));
+    expect(mutations()[0]?.[1]).toMatchObject({
+      input: {
+        purpose: "Confirmed fictional visit",
+        plannedStartLocal: "2026-10-06T09:15",
+        plannedEndLocal: "2026-10-06T10:45",
+      },
+    });
+  });
+
   it("sends Indianapolis wall times unchanged and preserves the existing visit when creating another", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Visits", exact: true }));

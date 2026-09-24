@@ -6,6 +6,14 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./cpl-integration-security": {
+      "types": "./src/cpl-integration-security.ts",
+      "default": "./src/cpl-integration-security.ts"
+    },
+    "./cpl-integration-fixture": {
+      "types": "./src/cpl-integration-fixture.ts",
+      "default": "./src/cpl-integration-fixture.ts"
+    },
     "./hosted": {
       "types": "./src/hosted.ts",
       "default": "./src/hosted.ts"

@@ -236,15 +236,17 @@ export function ActionCenter({
   onDirty,
   onBusy,
   onOpen,
+  initialArea = "actions",
 }: {
   organizationId: string;
   request: CommercialRequest;
   onDirty: (value: boolean) => void;
   onBusy: (value: boolean) => void;
   onOpen: (target: CplActionTarget) => void;
+  initialArea?: "actions" | "recipes";
 }) {
   const [data, setData] = useState<CplAutomationWorkspace | null>(null),
-    [area, setArea] = useState<"actions" | "recipes" | "executions">("actions");
+    [area, setArea] = useState<"actions" | "recipes" | "executions">(initialArea);
   const [group, setGroup] = useState<Group>("mine"),
     [showClosed, setShowClosed] = useState(false);
   const [task, setTask] = useState<CplActionTask | null>(null),

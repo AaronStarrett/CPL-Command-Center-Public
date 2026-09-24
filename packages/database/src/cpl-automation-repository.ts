@@ -29,6 +29,7 @@ import {
 } from "./tenant-repository.js";
 import { SqlCplIntakeRepository } from "./cpl-intake-repository.js";
 import { SqlCplDeliveryRepository } from "./cpl-delivery-repository.js";
+import { readCplInboundAttention } from "./cpl-inbound-attention.js";
 
 type Row = Record<string, unknown>;
 type EditExecution = CplTenantRequest & {
@@ -635,15 +636,31 @@ export class SqlCplAutomationRepository {
         j = jobsTotal.rows[0] ?? {};
       const executions = [];
       for (const row of jobs.rows) executions.push(await this.execution(e, a, row));
+      const inboundAttention = enabled.has("intake-job-tracker")
+        ? await readCplInboundAttention(e, a)
+        : { items: [], total: 0, missingInformation: 0 };
+      const actionTasks = [
+        ...(await Promise.all(tasks.rows.map((r) => this.task(e, a, r)))),
+        ...inboundAttention.items,
+      ]
+        .sort(
+          (left, right) =>
+            Number(["open", "in_progress", "blocked"].includes(right.status)) -
+              Number(["open", "in_progress", "blocked"].includes(left.status)) ||
+            right.updatedAt.localeCompare(left.updatedAt) ||
+            left.id.localeCompare(right.id),
+        )
+        .slice(0, limit);
       return {
         recipes: rs.rows.map(recipe),
         executions,
-        tasks: await Promise.all(tasks.rows.map((r) => this.task(e, a, r))),
+        tasks: actionTasks,
         counts: {
-          openTasks: Number(t.open_tasks ?? 0),
+          openTasks: Number(t.open_tasks ?? 0) + inboundAttention.total,
           myTasks: Number(t.my_tasks ?? 0),
           reviews: Number(t.reviews ?? 0),
-          missingInformation: Number(t.missing_information ?? 0),
+          missingInformation:
+            Number(t.missing_information ?? 0) + inboundAttention.missingInformation,
           delivery: Number(t.delivery ?? 0),
           closeout: Number(t.closeout ?? 0),
           failedExecutions: Number(j.failed ?? 0),

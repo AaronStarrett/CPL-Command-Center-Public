@@ -5,10 +5,12 @@ import {
   cplExecutionId,
   cplExecutionInstant,
   cplExecutionRevision,
+  cplExecutionTimeZone,
   cplVisitReadiness,
   normalizeCplProjectOperations,
   normalizeCplVisit,
   type CplExecutionAgenda,
+  type CplAssignedWorkWorkspace,
   type CplExecutionEvent,
   type CplExecutionMember,
   type CplProjectOperations,
@@ -164,6 +166,13 @@ export class SqlCplExecutionRepository {
         updatedAt: iso(row.updated_at),
         updatedByIdentityId: String(row.updated_by_identity_id),
       };
+    const defaults = await e.query<Row>(
+      "SELECT value_json FROM cpl_organization_settings WHERE organization_id=$1 AND setting_key='company.profile'",
+      [a.organizationId],
+    );
+    const configuredTimeZone = defaults.rows[0]
+      ? json<{ timeZone?: unknown }>(defaults.rows[0].value_json).timeZone
+      : undefined;
     return {
       projectId: p.id,
       revision: 0,
@@ -174,7 +183,10 @@ export class SqlCplExecutionRepository {
       nextAction: "",
       operationalInstructions: p.snapshot.version.content.accessInstructions,
       internalNotes: p.snapshot.internalNotes,
-      timeZone: CPL_EXECUTION_TIME_ZONE,
+      timeZone:
+        configuredTimeZone === undefined
+          ? CPL_EXECUTION_TIME_ZONE
+          : cplExecutionTimeZone(configuredTimeZone),
       statusReason: "",
       updatedAt: null,
       updatedByIdentityId: null,
@@ -251,7 +263,10 @@ export class SqlCplExecutionRepository {
       "SELECT * FROM cpl_project_visits WHERE organization_id=$1 AND project_id=$2 AND id=$3",
       [a.organizationId, cplExecutionId(projectId), cplExecutionId(visitId)],
     );
-    return visit(rows.rows[0] ?? fail("CPL_RECORD_NOT_FOUND"));
+    const value = visit(rows.rows[0] ?? fail("CPL_RECORD_NOT_FOUND"));
+    if (a.role === "field-user" && value.responsibleIdentityId !== a.identityId)
+      fail("CPL_ACCESS_DENIED");
+    return value;
   }
   private async workspace(
     e: SqlExecutor,
@@ -301,9 +316,29 @@ export class SqlCplExecutionRepository {
     };
   }
   async getProjectWorkspace(request: ProjectRequest): Promise<CplProjectWorkspace> {
-    return this.run(request, false, async (e, a) =>
-      this.workspace(e, a, await this.parent(e, a, request.projectId)),
-    );
+    return this.run(request, false, async (e, a) => {
+      if (a.role === "field-user") fail("CPL_ACCESS_DENIED");
+      return this.workspace(e, a, await this.parent(e, a, request.projectId));
+    });
+  }
+  async readAssignedWork(request: CplTenantRequest): Promise<CplAssignedWorkWorkspace> {
+    return this.run(request, false, async (e, a) => {
+      const rows = await e.query<Row>(
+        `SELECT v.*,p.reference AS project_reference,COALESCE(o.name,p.snapshot->'version'->'content'->>'title') AS project_name FROM cpl_project_visits v JOIN cpl_commercial_projects p ON p.organization_id=v.organization_id AND p.id=v.project_id LEFT JOIN cpl_project_operations o ON o.organization_id=v.organization_id AND o.project_id=v.project_id WHERE v.organization_id=$1 AND v.responsible_identity_id=$2 ORDER BY (v.status IN('draft','scheduled','in_progress')) DESC,v.planned_start_at NULLS LAST,v.created_at,v.id LIMIT 201`,
+        [a.organizationId, a.identityId],
+      );
+      return {
+        currentIdentityId: a.identityId,
+        items: rows.rows.slice(0, 200).map((r) => ({
+          projectId: String(r.project_id),
+          projectReference: String(r.project_reference),
+          projectName: String(r.project_name),
+          visit: visit(r),
+        })),
+        truncated: rows.rows.length > 200,
+        permissions: { canCompleteAssignedVisits: cplTenantRoleAllows(a.role, "execution:field") },
+      };
+    });
   }
   async getVisit(request: ProjectRequest & { visitId: string }): Promise<CplVisit> {
     return this.run(request, false, async (e, a) => {
@@ -320,8 +355,8 @@ export class SqlCplExecutionRepository {
       fail("CPL_INVALID_INPUT");
     return this.run(request, false, async (e, a) => {
       const rows = await e.query<Row>(
-        "SELECT v.*,p.reference AS project_reference,COALESCE(o.name,p.snapshot->'version'->'content'->>'title') AS project_name FROM cpl_project_visits v JOIN cpl_commercial_projects p ON p.organization_id=v.organization_id AND p.id=v.project_id LEFT JOIN cpl_project_operations o ON o.organization_id=v.organization_id AND o.project_id=v.project_id WHERE v.organization_id=$1 AND v.planned_start_at<$3 AND v.planned_end_at>$2 ORDER BY v.planned_start_at,v.id LIMIT 501",
-        [a.organizationId, from, to],
+        "SELECT v.*,p.reference AS project_reference,COALESCE(o.name,p.snapshot->'version'->'content'->>'title') AS project_name FROM cpl_project_visits v JOIN cpl_commercial_projects p ON p.organization_id=v.organization_id AND p.id=v.project_id LEFT JOIN cpl_project_operations o ON o.organization_id=v.organization_id AND o.project_id=v.project_id WHERE v.organization_id=$1 AND v.planned_start_at<$3 AND v.planned_end_at>$2 AND($4::uuid IS NULL OR v.responsible_identity_id=$4) ORDER BY v.planned_start_at,v.id LIMIT 501",
+        [a.organizationId, from, to, a.role === "field-user" ? a.identityId : null],
       );
       return {
         from,

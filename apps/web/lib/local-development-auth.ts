@@ -16,8 +16,9 @@ import {
   CPL_LOCAL_DATABASE_NAME,
   CPL_LOCAL_DATABASE_ROLE,
   CPL_LOCAL_IDENTITY_ISSUER,
-  CPL_LOCAL_IDENTITY_SUBJECT,
-  CPL_LOCAL_IDENTITY_EMAIL,
+  CPL_LOCAL_PERSONAS,
+  cplLocalPersona,
+  type CplLocalPersonaKey,
   type CplHostedSignInResult,
 } from "@bea/security/hosted";
 import type { CplHostedRuntime } from "./hosted-auth";
@@ -55,6 +56,27 @@ export async function verifyLocalDevelopmentDatabase(database: DatabaseAdapter):
     refused();
 }
 
+/** Entry-only prerequisites; the enclosing local runtime has already verified
+ * its loopback request, restricted role and operator-owned database marker. */
+export async function localDevelopmentEntryReadiness(
+  runtime: CplHostedRuntime,
+  personaKey?: CplLocalPersonaKey,
+) {
+  const { verifyLocalDevelopmentEntryReadiness, readLocalDevelopmentSchemaExpectation } =
+    await import("@bea/database/cpl-local-entry-readiness");
+  let expectation;
+  try {
+    expectation = readLocalDevelopmentSchemaExpectation();
+  } catch {
+    throw new CplHostedAuthenticationError("CPL_LOCAL_SCHEMA_EXPECTATION_MISSING", 503);
+  }
+  const result = await verifyLocalDevelopmentEntryReadiness(runtime.database, expectation, {
+    personaKey,
+  });
+  if (!result.ready) throw new CplHostedAuthenticationError(result.code, 503);
+  return result;
+}
+
 /** Fresh request-local connection, with the same SQL lifecycle, role verifier,
  * forced RLS, tenant repository and auth session reader as the hosted product. */
 export async function withLocalDevelopmentRuntime<T>(
@@ -79,7 +101,10 @@ export async function withLocalDevelopmentRuntime<T>(
     const store = new SqlCplHostedAuthStore(database);
     return await operation({
       database,
-      tenants: new SqlCplTenantRepository(database),
+      tenants: new SqlCplTenantRepository(database, {
+        localDevelopmentAdministration: true,
+        trustedIssuers: [CPL_LOCAL_IDENTITY_ISSUER],
+      }),
       auth: new CplHostedAuthService(
         store,
         {
@@ -95,15 +120,32 @@ export async function withLocalDevelopmentRuntime<T>(
   }
 }
 
-/** Synthetic assurance is confined to an explicitly marked local database.
- * No browser claim chooses an identity, role, organization or MFA timestamp. */
+/** Fixed synthetic choices are available only inside the guarded local runtime.
+ * The list does not expose identity IDs, grants or provider assertions. */
+export async function listLocalDevelopmentPersonas(runtime: CplHostedRuntime) {
+  const result = await runtime.database.query<{ subject: string; email: string }>(
+    `SELECT subject,email FROM cpl_identities WHERE issuer=$1 AND status='active'
+       AND email_verified=TRUE AND hosted_domain IS NULL`,
+    [CPL_LOCAL_IDENTITY_ISSUER],
+  );
+  return CPL_LOCAL_PERSONAS.filter((persona) =>
+    result.rows.some((row) => row.subject === persona.subject && row.email === persona.email),
+  ).map(({ key, label }) => ({ key, label }));
+}
+
+/** The browser selects a fixed fixture key, never identity/role/provider claims.
+ * Real opaque sessions carry no MFA assurance; local administration has its own
+ * separately verified operator boundary. Hosted MFA behavior stays unchanged. */
 export async function issueLocalDevelopmentSession(
   runtime: CplHostedRuntime,
   request: Request,
   previousSessionToken?: string,
+  personaKey: CplLocalPersonaKey = "legacy-owner",
 ): Promise<CplHostedSignInResult> {
   assertLocalDevelopmentRequest(request);
   if (request.method !== "POST") refused();
+  const persona = cplLocalPersona(personaKey);
+  if (!persona) return refused();
   const store = new SqlCplHostedAuthStore(runtime.database);
   const now = new Date().toISOString();
   if (
@@ -122,18 +164,26 @@ export async function issueLocalDevelopmentSession(
   const absoluteExpiresAt = new Date(Date.parse(now) + 8 * 60 * 60_000).toISOString();
   await runtime.database.transaction(async (executor) => {
     const fixture = await executor.query<{ id: string }>(
-      `SELECT i.id FROM cpl_identities i JOIN cpl_platform_administrators a ON a.identity_id=i.id
+      `SELECT i.id FROM cpl_identities i
        WHERE i.issuer=$1 AND i.subject=$2 AND i.email=$3 AND i.email_verified=TRUE
-         AND i.hosted_domain IS NULL AND i.status='active' AND a.status='active'
-       FOR SHARE OF i,a`,
-      [CPL_LOCAL_IDENTITY_ISSUER, CPL_LOCAL_IDENTITY_SUBJECT, CPL_LOCAL_IDENTITY_EMAIL],
+         AND i.hosted_domain IS NULL AND i.status='active' FOR SHARE OF i`,
+      [CPL_LOCAL_IDENTITY_ISSUER, persona.subject, persona.email],
     );
     if (fixture.rows.length !== 1) refused();
     const identity = fixture.rows[0]!;
+    const platform = await executor.query<{ status: string }>(
+      "SELECT status FROM cpl_platform_administrators WHERE identity_id=$1 FOR SHARE",
+      [identity.id],
+    );
+    if (
+      (persona.platformOperator && platform.rows[0]?.status !== "active") ||
+      (!persona.platformOperator && persona.key !== "legacy-owner" && platform.rows.length > 0)
+    )
+      refused();
     await executor.query(
       `INSERT INTO cpl_sessions(id,identity_id,token_hash,authenticated_at,mfa_verified,
         expires_at,csrf_token_hash,absolute_expires_at,mfa_verified_at,created_at)
-       VALUES($1,$2,$3,$4,TRUE,$5,$6,$7,$4,$4)`,
+       VALUES($1,$2,$3,$4,FALSE,$5,$6,$7,NULL,$4)`,
       [
         id,
         identity.id,
@@ -146,8 +196,8 @@ export async function issueLocalDevelopmentSession(
     );
     if (previousSessionToken) {
       await executor.query(
-        "UPDATE cpl_sessions SET revoked_at=$1 WHERE token_hash=$2 AND identity_id=$3 AND revoked_at IS NULL",
-        [now, hostedTokenHash(previousSessionToken), identity.id],
+        "UPDATE cpl_sessions SET revoked_at=$1 WHERE token_hash=$2 AND revoked_at IS NULL",
+        [now, hostedTokenHash(previousSessionToken)],
       );
     }
     await executor.query(
@@ -156,7 +206,12 @@ export async function issueLocalDevelopmentSession(
     );
   });
   const organizations = await runtime.tenants.listOrganizations(sessionToken);
-  const development = organizations.find((organization) => organization.slug === "cpl-development");
+  const development =
+    persona.key === "legacy-owner"
+      ? organizations.find((organization) => organization.slug === "cpl-development")
+      : organizations.length === 1
+        ? organizations[0]
+        : undefined;
   if (development) await runtime.auth.selectOrganization(sessionToken, development.id);
   return { sessionToken, csrfToken, session: await runtime.auth.requireSession(sessionToken) };
 }

@@ -2,6 +2,58 @@ import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
 
 export type CplHostedDatabasePurpose = "web" | "worker";
 
+/** Explicit internal ingestion opt-in. It never grants a hosted HTTP worker new
+ * kinds, changes source authorizers or bypasses the immutable SQL grant fence. */
+export async function configureCplIngestionWorker(
+  database: DatabaseAdapter,
+  roleName: string,
+): Promise<void> {
+  if (
+    database.kind !== "postgres" ||
+    !/^cpl_[a-z0-9_]{1,58}$/u.test(roleName) ||
+    roleName === "cpl_worker_runtime"
+  )
+    throw new Error("CPL_INGESTION_WORKER_REFUSED");
+  const role = `"${roleName}"`;
+  await database.transaction(async (e) => {
+    const r = await e.query<Record<string, unknown>>(
+      `SELECT registry.purpose,p.rolsuper,p.rolbypassrls,p.rolcreatedb,p.rolcreaterole,p.rolreplication,
+   EXISTS(SELECT 1 FROM pg_auth_members WHERE member=p.oid) AS inherited,
+   EXISTS(SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='cpl_jobs_http' AND has_function_privilege(p.oid,f.oid,'EXECUTE')) AS http_capability,
+   has_table_privilege(p.oid,'cpl_runtime_roles','INSERT,UPDATE,DELETE') AS registry_write
+   FROM pg_roles p JOIN cpl_runtime_roles registry ON registry.role_name=p.rolname WHERE p.rolname=$1`,
+      [roleName],
+    );
+    if (
+      !r.rows[0] ||
+      r.rows[0].purpose !== "worker" ||
+      Object.entries(r.rows[0]).some(([k, v]) => k !== "purpose" && v !== false)
+    )
+      throw new Error("CPL_INGESTION_WORKER_REFUSED");
+    await verifyCplIntegrationSqlContract(e);
+    const contract = await e.query<{
+      valid: boolean;
+    }>(`SELECT p.prosecdef AND p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+   AND p.prorettype='jsonb'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']::text[]
+   AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) acl WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE') AS valid
+   FROM pg_proc p WHERE p.oid=to_regprocedure('public.cpl_ingestion_lock_authority(uuid,uuid,uuid)')`);
+    if (contract.rows[0]?.valid !== true)
+      throw new Error("CPL_INGESTION_AUTHORITY_CONTRACT_REFUSED");
+    await e.execute(`GRANT SELECT ON cpl_integration_sources,cpl_integration_source_versions,cpl_integration_accounts,cpl_integration_credentials,cpl_inbound_mapping_versions,cpl_inbound_originals,cpl_inbound_receipts,cpl_inbound_normalizations,cpl_inbound_attempts,cpl_workflow_leads,cpl_lead_evidence,cpl_lead_review_events,cpl_workflow_mutations,cpl_customers,cpl_contacts,cpl_sites,cpl_directory_current,cpl_catalog_items,cpl_organization_settings,cpl_commercial_proposals,cpl_action_tasks,cpl_action_task_events TO ${role};
+   GRANT INSERT ON cpl_inbound_originals,cpl_inbound_receipts,cpl_inbound_normalizations,cpl_inbound_attempts,cpl_workflow_jobs,cpl_workflow_leads,cpl_lead_evidence,cpl_workflow_mutations,cpl_action_tasks,cpl_action_task_events TO ${role};
+   GRANT UPDATE ON cpl_inbound_receipts,cpl_inbound_attempts,cpl_action_tasks TO ${role};
+   GRANT UPDATE(history_id,page_json,coverage,next_eligible_at,last_attempt_at,last_success_at,last_issue,operation_token,operation_expires_at,state,updated_at) ON cpl_integration_sources TO ${role};
+   GRANT UPDATE(revision,envelope,scopes,updated_at) ON cpl_integration_credentials TO ${role};
+   GRANT UPDATE(catalog_snapshot,custom_values,reviewed_policy_version) ON cpl_workflow_leads TO ${role};
+   GRANT UPDATE(resource_id) ON cpl_workflow_mutations TO ${role};
+   GRANT EXECUTE ON FUNCTION cpl_ingestion_lock_authority(uuid,uuid,uuid) TO ${role};`);
+    await e.query(
+      "UPDATE cpl_runtime_roles SET ingestion_enabled=TRUE WHERE role_name=$1 AND purpose='worker'",
+      [roleName],
+    );
+  });
+}
+
 /** Explicit operator opt-in for the local/internal automation processor. The
  * historical hosted HTTP worker keeps its original capabilities and job kind. */
 export async function configureCplAutomationWorker(
@@ -46,6 +98,9 @@ export async function configureCplAutomationWorker(
       GRANT UPDATE(resource_id) ON cpl_workflow_mutations TO ${role};
       GRANT UPDATE ON cpl_automation_attempts TO ${role};
       GRANT EXECUTE ON FUNCTION cpl_automation_lock_authority(uuid,uuid,uuid) TO ${role};`);
+    await e.execute(
+      `GRANT SELECT ON cpl_catalog_items,cpl_catalog_versions,cpl_directory_current,cpl_organization_settings TO ${role};`,
+    );
     await e.query(
       "UPDATE cpl_runtime_roles SET automation_enabled=TRUE WHERE role_name=$1 AND purpose='worker'",
       [roleName],
@@ -71,7 +126,7 @@ export async function verifyHostedDatabaseRole(
       (d.datdba=r.oid OR d.datdba IN (SELECT roleid FROM inherited)) AS owns_database,
       (n.nspowner=r.oid OR n.nspowner IN (SELECT roleid FROM inherited)) AS owns_schema,
       EXISTS (SELECT 1 FROM pg_class c WHERE c.relnamespace=n.oid AND (c.relowner=r.oid OR c.relowner IN (SELECT roleid FROM inherited)) AND c.relkind IN ('r','p','v','m','f')) AS owns_application_tables,
-      (SELECT count(*)=65 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity) FROM pg_class c WHERE c.relnamespace=n.oid AND c.relname IN ('cpl_organizations','cpl_memberships','cpl_module_entitlements','cpl_organization_settings','cpl_invitations','cpl_service_grants','cpl_tenant_audit_events','cpl_platform_audit_events','cpl_workflow_leads','cpl_proposal_drafts','cpl_workflow_mutations','cpl_workflow_jobs','cpl_customers','cpl_contacts','cpl_sites','cpl_lead_evidence','cpl_lead_review_events','cpl_commercial_branding','cpl_commercial_templates','cpl_commercial_proposals','cpl_commercial_versions','cpl_commercial_events','cpl_commercial_awards','cpl_commercial_projects','cpl_commercial_artifacts','cpl_project_operations','cpl_project_team','cpl_project_visits','cpl_project_tasks','cpl_execution_events','cpl_execution_mutations','cpl_field_templates','cpl_field_records','cpl_field_checklist_revisions','cpl_field_observations','cpl_field_observation_revisions','cpl_field_photos','cpl_field_photo_revisions','cpl_field_events','cpl_field_mutations','cpl_report_branding','cpl_report_templates','cpl_reports','cpl_report_versions','cpl_report_events','cpl_report_attempts','cpl_report_artifacts','cpl_report_mutations','cpl_automation_recipes','cpl_automation_recipe_versions','cpl_business_events','cpl_automation_steps','cpl_automation_attempts','cpl_action_tasks','cpl_action_task_events','cpl_automation_mutations','cpl_delivery_packages','cpl_delivery_versions','cpl_delivery_attachments','cpl_delivery_events','cpl_report_approval_withdrawals','cpl_closeout_policies','cpl_closeout_facts','cpl_closeout_overrides','cpl_delivery_mutations')) AS tenant_tables_protected,
+      (SELECT count(*)=86 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity) FROM pg_class c WHERE c.relnamespace=n.oid AND c.relname IN ('cpl_organizations','cpl_memberships','cpl_module_entitlements','cpl_organization_settings','cpl_invitations','cpl_service_grants','cpl_tenant_audit_events','cpl_platform_audit_events','cpl_workflow_leads','cpl_proposal_drafts','cpl_workflow_mutations','cpl_workflow_jobs','cpl_customers','cpl_contacts','cpl_sites','cpl_lead_evidence','cpl_lead_review_events','cpl_commercial_branding','cpl_commercial_templates','cpl_commercial_proposals','cpl_commercial_versions','cpl_commercial_events','cpl_commercial_awards','cpl_commercial_projects','cpl_commercial_artifacts','cpl_project_operations','cpl_project_team','cpl_project_visits','cpl_project_tasks','cpl_execution_events','cpl_execution_mutations','cpl_field_templates','cpl_field_records','cpl_field_checklist_revisions','cpl_field_observations','cpl_field_observation_revisions','cpl_field_photos','cpl_field_photo_revisions','cpl_field_events','cpl_field_mutations','cpl_report_branding','cpl_report_templates','cpl_reports','cpl_report_versions','cpl_report_events','cpl_report_attempts','cpl_report_artifacts','cpl_report_mutations','cpl_automation_recipes','cpl_automation_recipe_versions','cpl_business_events','cpl_automation_steps','cpl_automation_attempts','cpl_action_tasks','cpl_action_task_events','cpl_automation_mutations','cpl_delivery_packages','cpl_delivery_versions','cpl_delivery_attachments','cpl_delivery_events','cpl_report_approval_withdrawals','cpl_closeout_policies','cpl_closeout_facts','cpl_closeout_overrides','cpl_delivery_mutations','cpl_administration_mutations','cpl_platform_provision_requests','cpl_catalog_items','cpl_catalog_versions','cpl_directory_current','cpl_directory_versions','cpl_company_setting_versions','cpl_company_mutations','cpl_integration_sources','cpl_integration_source_versions','cpl_integration_accounts','cpl_integration_credentials','cpl_integration_oauth_attempts','cpl_inbound_mapping_versions','cpl_integration_mutations','cpl_integration_events','cpl_inbound_originals','cpl_inbound_receipts','cpl_inbound_normalizations','cpl_inbound_attempts','cpl_inbound_nonces')) AS tenant_tables_protected,
       (has_schema_privilege(current_user,'public','CREATE') OR EXISTS (SELECT 1 FROM inherited i WHERE has_schema_privilege(i.roleid,'public','CREATE'))) AS schema_create,
       EXISTS (SELECT 1 FROM inherited i JOIN pg_roles p ON p.oid=i.roleid WHERE p.rolsuper OR p.rolbypassrls OR p.rolcreatedb OR p.rolcreaterole OR p.rolreplication OR p.rolname LIKE 'pg_%') AS elevated_membership,
       registry.purpose,
@@ -120,6 +175,7 @@ export async function configureHostedRuntimeRole(
     throw new Error("CPL_INVALID_RUNTIME_ROLE");
   const role = `"${roleName}"`;
   await database.transaction(async (executor) => {
+    await verifyCplIntegrationSqlContract(executor);
     const existing = await executor.query<{
       rolsuper: boolean;
       rolbypassrls: boolean;
@@ -136,13 +192,24 @@ export async function configureHostedRuntimeRole(
       `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${role}; REVOKE CREATE ON SCHEMA public FROM ${role}; GRANT USAGE ON SCHEMA public TO ${role};`,
     );
     await executor.query(
-      "INSERT INTO cpl_runtime_roles (role_name,purpose,automation_enabled) VALUES ($1,$2,FALSE) ON CONFLICT (role_name) DO UPDATE SET purpose=EXCLUDED.purpose,automation_enabled=FALSE",
+      "INSERT INTO cpl_runtime_roles (role_name,purpose,automation_enabled,ingestion_enabled) VALUES ($1,$2,FALSE,FALSE) ON CONFLICT (role_name) DO UPDATE SET purpose=EXCLUDED.purpose,automation_enabled=FALSE,ingestion_enabled=FALSE",
       [roleName, purpose],
     );
     await executor.execute(
       `GRANT SELECT ON cpl_runtime_roles,bea_schema_migrations TO ${role}; REVOKE EXECUTE ON FUNCTION cpl_automation_lock_authority(uuid,uuid,uuid) FROM ${role};`,
     );
+    await executor.execute(
+      `REVOKE EXECUTE ON FUNCTION cpl_ingestion_lock_authority(uuid,uuid,uuid),cpl_inbound_admission_budget(text),cpl_inbound_public_context(text),cpl_integration_oauth_context(text,text) FROM ${role};`,
+    );
     if (purpose === "web") {
+      await executor.execute(`GRANT SELECT,INSERT,UPDATE ON cpl_integration_sources,cpl_inbound_receipts,cpl_inbound_attempts TO ${role};
+      GRANT SELECT,INSERT,UPDATE,DELETE ON cpl_integration_credentials,cpl_integration_oauth_attempts,cpl_inbound_nonces TO ${role};
+      GRANT SELECT,INSERT ON cpl_integration_source_versions,cpl_integration_accounts,cpl_inbound_mapping_versions,cpl_integration_mutations,cpl_integration_events,cpl_inbound_originals,cpl_inbound_normalizations TO ${role};
+      GRANT EXECUTE ON FUNCTION cpl_inbound_admission_budget(text),cpl_inbound_public_context(text),cpl_integration_oauth_context(text,text) TO ${role};`);
+      await executor.execute(
+        `GRANT SELECT,INSERT ON cpl_administration_mutations,cpl_platform_provision_requests,cpl_catalog_versions,cpl_directory_versions,cpl_company_setting_versions,cpl_company_mutations TO ${role};
+        GRANT SELECT,INSERT,UPDATE ON cpl_catalog_items,cpl_directory_current TO ${role};`,
+      );
       await executor.execute(
         `GRANT SELECT,INSERT,UPDATE ON cpl_automation_recipes,cpl_action_tasks,cpl_delivery_packages TO ${role}; GRANT SELECT,INSERT ON cpl_automation_recipe_versions,cpl_business_events,cpl_automation_steps,cpl_action_task_events,cpl_automation_mutations,cpl_delivery_versions,cpl_delivery_attachments,cpl_delivery_events,cpl_report_approval_withdrawals,cpl_closeout_policies,cpl_closeout_facts,cpl_closeout_overrides,cpl_delivery_mutations TO ${role}; GRANT SELECT,UPDATE ON cpl_automation_attempts TO ${role};`,
       );
@@ -218,4 +285,18 @@ FROM pg_namespace n WHERE n.nspname='cpl_jobs_http'`);
       }
     }
   });
+}
+
+async function verifyCplIntegrationSqlContract(e: SqlExecutor): Promise<void> {
+  const r = await e.query<{
+    valid: boolean;
+  }>(`WITH expected(signature,result,source_hash) AS(VALUES ('public.cpl_integration_oauth_context(text,text)','jsonb','7b6fa97102f68727f3bfd0c355a0a7363fab31dbb45bbf47c083b581720dcc7f'),
+('public.cpl_inbound_admission_budget(text)','boolean','d06da9c108d96d6be850c74b87fda917c6c37df68ac1d625eea8e163d2b6844d'),
+('public.cpl_inbound_public_context(text)','jsonb','36e8e271f246234ba160259bd52453bbce9dbce54f86d743b5e25e0a6dc3cbce'),
+('public.cpl_ingestion_lock_authority(uuid,uuid,uuid)','jsonb','1b3565711aa9fb164f586f6dc7ec40d9ed7b94020117c068431382b41d4c3a61'))
+ SELECT count(*)=4 AND bool_and(p.oid IS NOT NULL AND p.prosecdef AND p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+ AND p.prorettype=e.result::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']::text[]
+ AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=e.source_hash
+ AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')) AS valid FROM expected e LEFT JOIN pg_proc p ON p.oid=to_regprocedure(e.signature)`);
+  if (r.rows[0]?.valid !== true) throw new Error("CPL_INTEGRATION_SQL_CONTRACT_REFUSED");
 }

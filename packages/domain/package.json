@@ -34,7 +34,11 @@
       "types": "./src/cpl-commercial.ts",
       "default": "./src/cpl-commercial.ts"
     },
-    "./cpl-delivery": "./src/cpl-delivery.ts"
+    "./cpl-delivery": "./src/cpl-delivery.ts",
+    "./cpl-admin": "./src/cpl-admin.ts",
+    "./cpl-company": "./src/cpl-company.ts",
+    "./cpl-integrations": "./src/cpl-integrations.ts",
+    "./cpl-inbound": "./src/cpl-inbound.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

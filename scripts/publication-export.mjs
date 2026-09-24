@@ -73,6 +73,14 @@ const publicDocs = new Set([
   "docs/LOCAL_PHASE2_TESTING.md",
   "docs/LOCAL_PHASE3_TESTING.md",
   "docs/LOCAL_PHASE4_TESTING.md",
+  "docs/LOCAL_PHASE5_TESTING.md",
+  "docs/PHASE5_IMPLEMENTATION.md",
+  "docs/PHASE5_HANDOFF.md",
+  "docs/LOCAL_PHASE6_INTAKE_TESTING.md",
+  "docs/PHASE6_INTAKE_IMPLEMENTATION.md",
+  "docs/PHASE6_HANDOFF.md",
+  "docs/PHASE6_LIVE_GMAIL_ACCEPTANCE.md",
+  "docs/PRODUCT_ROADMAP.md",
   "docs/DEFERRED_HOSTING.md",
 ]);
 const textExtension = /\.(?:[cm]?[jt]sx?|json|jsonc|css|sql|ya?ml|toml|md|mdc|ps1|cmd|example)$/iu;

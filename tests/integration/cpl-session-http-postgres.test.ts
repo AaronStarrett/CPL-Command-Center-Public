@@ -39,7 +39,7 @@ const token = "A".repeat(43),
   csrfHash = "b".repeat(64);
 const now = "2026-09-23T02:00:00.000Z";
 describe("private session SQL source contract (offline)", () => {
-  it("embeds exact canonical role SQL and all15field checks before reads", () => {
+  it("preserves frozen role safety checks while the current verifier extends tenant tables", () => {
     const source = readFileSync(`${ROOT}/packages/database/src/hosted-database-role.ts`, "utf8"),
       ast = ts.createSourceFile("role.ts", source, ts.ScriptTarget.Latest, true),
       queries: string[] = [];
@@ -54,7 +54,23 @@ describe("private session SQL source contract (offline)", () => {
         .split("-- BEGIN CANONICAL ROLE QUERY")[1]!
         .split("-- END CANONICAL ROLE QUERY")[0]!;
     expect(queries).toHaveLength(1);
-    expect(normalize(embedded)).toBe(normalize(queries[0]!));
+    const tableGuard =
+      /\(SELECT count\(\*\)=\d+ AND bool_and\(c\.relrowsecurity AND c\.relforcerowsecurity\) FROM pg_class c WHERE c\.relnamespace=n\.oid AND c\.relname IN \(([^)]+)\)\)/u;
+    const historical = normalize(embedded),
+      current = normalize(queries[0]!);
+    const historicalGuard = historical.match(tableGuard),
+      currentGuard = current.match(tableGuard);
+    expect(historicalGuard).not.toBeNull();
+    expect(currentGuard).not.toBeNull();
+    const names = (s: string) => [...s.matchAll(/'([^']+)'/gu)].map((m) => m[1]!);
+    const historicalTables = names(historicalGuard![1]!),
+      currentTables = names(currentGuard![1]!);
+    expect(historicalTables).toHaveLength(12);
+    expect(currentTables.length).toBeGreaterThanOrEqual(historicalTables.length);
+    expect(currentTables).toEqual(expect.arrayContaining(historicalTables));
+    expect(historical.replace(tableGuard, "TENANT_TABLE_GUARD")).toBe(
+      current.replace(tableGuard, "TENANT_TABLE_GUARD"),
+    );
     for (const f of [
       "rolsuper",
       "rolbypassrls",
@@ -142,14 +158,27 @@ suite("versioned session functions on owned local PostgreSQL16.15", () => {
     web = new PgSqlDatabaseAdapter({ connectionString: connect(1), max: 1 });
     worker = new PgSqlDatabaseAdapter({ connectionString: connect(2), max: 1 });
     store = new SqlCplHostedAuthStore(web);
-  });
+  }, 60_000);
   afterAll(async () => {
     await Promise.all([web?.close(), worker?.close(), admin?.close()]);
     if (created) await control.execute(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
     await control?.close();
   });
   beforeEach(async () => {
-    await admin.execute("TRUNCATE public.cpl_identities,public.cpl_organizations CASCADE");
+    // This isolated suite seeds only these six tables. CASCADE TRUNCATE also
+    // rewrites every empty downstream tenant table on each case; ordinary
+    // deletes retain FK/trigger checks and expose unexpected dependent writes.
+    await admin.transaction(async (tx) => {
+      for (const table of [
+        "cpl_webauthn_credentials",
+        "cpl_sessions",
+        "cpl_platform_administrators",
+        "cpl_memberships",
+        "cpl_organizations",
+        "cpl_identities",
+      ])
+        await tx.execute(`DELETE FROM public.${table}`);
+    });
   });
   async function seed(selected = false, passkey = false) {
     const identityId = randomUUID(),

@@ -41,6 +41,11 @@ const previewDistDirectory = previewDistDirectoryForEnvironment(process.env);
 export const nextConfig: NextConfig = {
   ...(previewDistDirectory ? { distDir: previewDistDirectory } : {}),
   poweredByHeader: false,
+  // OAuth codes and state belong only to the bounded callback handler. Next's
+  // development request logger otherwise prints the complete incoming URL.
+  logging: {
+    incomingRequests: { ignore: [/\/api\/cpl-integrations\/oauth\//u] },
+  },
   reactStrictMode: true,
   serverExternalPackages: ["@electric-sql/pglite"],
   transpilePackages: [

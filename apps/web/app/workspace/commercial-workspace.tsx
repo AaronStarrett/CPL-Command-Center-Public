@@ -118,11 +118,18 @@ function CreateProposal({
     templateId?: string;
     legacyDraftId?: string;
     allowAdditional: boolean;
+    legacyTemplateCurrency?: string;
   }) => void;
 }) {
   const [leadId, setLeadId] = useState(intent?.leadId ?? "");
   const [templateId, setTemplateId] = useState("");
   const [allowAdditional, setAllowAdditional] = useState(false);
+  const [legacyTemplateCurrency, setLegacyTemplateCurrency] = useState("");
+  const [currencyConfirmed, setCurrencyConfirmed] = useState(false);
+  const selectedTemplate = data.templates.find((item) => item.id === templateId);
+  const requiresCurrencyConfirmation = Boolean(
+    selectedTemplate && !selectedTemplate.currency && data.branding.defaultCurrency !== "USD",
+  );
   const lead = leads.find((item) => item.id === leadId);
   const previous = data.proposals.filter((item) => item.leadId === leadId);
   const legacyDraft = legacy.find((item) => item.id === intent?.legacyDraftId);
@@ -153,6 +160,7 @@ function CreateProposal({
             ...(templateId ? { templateId } : {}),
             ...(legacyDraft ? { legacyDraftId: legacyDraft.id } : {}),
             allowAdditional,
+            ...(requiresCurrencyConfirmation ? { legacyTemplateCurrency } : {}),
           });
         }}
       >
@@ -218,7 +226,14 @@ function CreateProposal({
           ) : null}
           <label className={styles.field}>
             Proposal template
-            <select value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+            <select
+              value={templateId}
+              onChange={(event) => {
+                setTemplateId(event.target.value);
+                setLegacyTemplateCurrency("");
+                setCurrencyConfirmed(false);
+              }}
+            >
               <option value="">Start from confirmed lead only</option>
               {data.templates.map((template) => (
                 <option key={template.id} value={template.id}>
@@ -227,6 +242,38 @@ function CreateProposal({
               ))}
             </select>
           </label>
+          {requiresCurrencyConfirmation ? (
+            <div className={styles.warning}>
+              <p>
+                This older template did not record a currency. Confirm what its prices mean before
+                creating a proposal. No exchange-rate conversion is performed.
+              </p>
+              <label className={styles.field}>
+                Legacy template price currency
+                <select
+                  required
+                  value={legacyTemplateCurrency}
+                  onChange={(event) => {
+                    setLegacyTemplateCurrency(event.target.value);
+                    setCurrencyConfirmed(false);
+                  }}
+                >
+                  <option value="">Choose the recorded price currency</option>
+                  {["USD", "CAD", "EUR", "GBP", "AUD", "NZD"].map((currency) => (
+                    <option key={currency}>{currency}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={css.check}>
+                <input
+                  type="checkbox"
+                  checked={currencyConfirmed}
+                  onChange={(event) => setCurrencyConfirmed(event.target.checked)}
+                />
+                I reviewed these template prices and confirm their currency.
+              </label>
+            </div>
+          ) : null}
           {!data.branding.businessName ? (
             <p className={styles.warning}>
               Company artifact branding needs configuration before a proposal can complete review.
@@ -256,6 +303,7 @@ function CreateProposal({
             busy ||
             !data.permissions.canEdit ||
             !ready ||
+            (requiresCurrencyConfirmation && (!legacyTemplateCurrency || !currencyConfirmed)) ||
             Boolean(previous.length && !allowAdditional)
           }
         >
@@ -739,6 +787,7 @@ export function CommercialWorkspace({
       ) : null}
       {area === "templates" ? (
         <TemplateSettings
+          defaultCurrency={data.branding.defaultCurrency}
           templates={data.templates}
           busy={busy}
           allowed={data.permissions.canConfigure}

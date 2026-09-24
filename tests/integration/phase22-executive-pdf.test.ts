@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEMO_PERSONAS } from "../../packages/domain/src/index.js";
 import {
@@ -41,9 +41,15 @@ async function demoRuntime() {
   return runtime;
 }
 
+// Fresh database migration and demo seeding are fixture setup, separate from the PDF assertions.
+beforeEach(async () => {
+  await demoRuntime();
+}, 60_000);
+
 describe("Phase 2.2 executive PDF persistence", () => {
   it("renders, stores, versions, and audits an application-owned PDF", async () => {
-    const server = await demoRuntime();
+    const server = runtime;
+    if (!server) throw new Error("The executive PDF fixture was not initialized.");
     const conversation = await server.phase1.createConversation({
       ownerUserId: OWNER_USER_ID,
       title: "Phase 2.2 briefing",

@@ -271,6 +271,8 @@ export async function POST(request: Request, context: Context) {
         if (path[0] === "leads" && path.length === 1) {
           const input = await body(request, [
             ...CPL_LEAD_EDITABLE_FIELDS,
+            "catalogItemId",
+            "customValues",
             "idempotencyKey",
             "sourceReference",
             "evidenceNote",
@@ -355,6 +357,10 @@ export async function PATCH(request: Request, context: Context) {
         const tenant = selectedTenant(current, request, true);
         const input = await body(request, [
           ...CPL_LEAD_EDITABLE_FIELDS,
+          "catalogItemId",
+          "customValues",
+          "refreshDirectory",
+          "refreshCatalog",
           "expectedVersion",
           "duplicateDisposition",
           "duplicateReason",

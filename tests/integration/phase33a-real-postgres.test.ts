@@ -22,7 +22,7 @@ const SALES = DEMO_PERSONAS[1].id;
 const READY_LEAD = "a1000000-0000-4000-8000-000000000003";
 const MOISTURE_LEAD = "a1000000-0000-4000-8000-000000000005";
 const MIGRATION_0023 = "0023_phase33a_commercial_integrity_and_override_cycles.sql";
-const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
+const LATEST_MIGRATION = "0039_cpl_durable_inbound.sql";
 const COMPANY_ID = "90000000-0000-4000-8000-000000000001";
 const CONTACT_ID = "91000000-0000-4000-8000-000000000001";
 

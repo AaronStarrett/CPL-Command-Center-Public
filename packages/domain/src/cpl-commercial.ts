@@ -1,4 +1,5 @@
 import { intakeText, type CplLeadEvidence, type CplLeadFields } from "./cpl-intake.js";
+import type { CplLeadConfiguration } from "./cpl-company.js";
 
 export const CPL_COMMERCIAL_CURRENCIES = ["USD", "CAD", "EUR", "GBP", "AUD", "NZD"] as const;
 export type CplCommercialState =
@@ -64,6 +65,8 @@ export interface CplCommercialCatalogItem {
   unitPriceMinor: number;
 }
 export interface CplCommercialTemplateInput {
+  /** Pinned on new snapshots; absent only on preserved legacy templates. */
+  currency?: string;
   name: string;
   summary: string;
   scope: string;
@@ -87,6 +90,7 @@ export interface CplCommercialSourceLead {
   fields: CplLeadFields;
   evidence: CplLeadEvidence[];
   capturedAt: string;
+  configuration?: CplLeadConfiguration;
 }
 export interface CplCommercialVersion {
   version: number;
@@ -467,6 +471,7 @@ export function normalizeCplCommercialTemplate(input: unknown): CplCommercialTem
   if (new Set(catalog.map((x) => x.serviceCode)).size !== catalog.length) invalid();
   return {
     name: intakeText(v.name, 240, true),
+    ...(v.currency === undefined ? {} : { currency: currency(v.currency) }),
     summary: string(v.summary),
     scope: string(v.scope),
     schedule: string(v.schedule),

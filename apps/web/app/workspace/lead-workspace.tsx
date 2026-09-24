@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { CommercialRequest } from "./commercial-ui";
+import { LeadConfigurationFields } from "./lead-configuration";
+import { useUnsavedNavigation } from "./commercial-navigation";
 import type {
   CplWorkflowLead,
   CplProposalDraft,
@@ -11,7 +14,7 @@ import styles from "./workspace.module.css";
 
 export type IntakePermissions = CplWorkflowPermissions;
 export type IntakeDirectory = CplIntakeDirectory;
-export type LeadInput = Record<string, string | number | null>;
+export type LeadInput = Record<string, unknown>;
 type Props = {
   leads: CplWorkflowLead[];
   proposals: CplProposalDraft[];
@@ -25,6 +28,8 @@ type Props = {
   onEvidence: (id: string, input: LeadInput) => Promise<CplWorkflowLead | null>;
   onDirectory: (input: LeadInput) => Promise<boolean>;
   onProposal: (lead: CplWorkflowLead, proposalId?: string) => void;
+  onDirty?: (dirty: boolean) => void;
+  request?: CommercialRequest;
 };
 const statuses = {
   new: "New inquiry",
@@ -71,6 +76,7 @@ function LeadForm({
   disabled,
   busy,
   onSave,
+  request,
 }: {
   lead?: CplWorkflowLead;
   latest?: CplWorkflowLead;
@@ -78,10 +84,13 @@ function LeadForm({
   disabled: boolean;
   busy: boolean;
   onSave: Props["onSave"];
+  request?: CommercialRequest;
 }) {
   const [saved, setSaved] = useState(lead);
   const [revision, setRevision] = useState(0);
   const [customerId, setCustomerId] = useState(lead?.customerId ?? "");
+  const [configurationInput, setConfigurationInput] = useState<Record<string, unknown>>({});
+  const serviceField = useRef<HTMLInputElement>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled || busy) return;
@@ -114,11 +123,13 @@ function LeadForm({
     }
     if (!input.receivedAt) delete input.receivedAt;
     if (saved) input.expectedVersion = saved.version;
+    Object.assign(input, configurationInput);
     const result = await onSave(input, saved?.id);
     if (result) {
       setSaved(result);
       setCustomerId(result.customerId ?? "");
       setRevision((value) => value + 1);
+      setConfigurationInput({});
     }
   }
   const field = (
@@ -130,6 +141,7 @@ function LeadForm({
     <label className={styles.field}>
       {label}
       <input
+        ref={name === "requestedService" ? serviceField : undefined}
         name={name}
         defaultValue={value ?? ""}
         maxLength={options.maxLength ?? 160}
@@ -266,6 +278,18 @@ function LeadForm({
           {field("Requested service", "requestedService", saved?.requestedService, {
             maxLength: 500,
           })}
+          {request ? (
+            <LeadConfigurationFields
+              key={revision}
+              request={request}
+              configuration={saved?.configuration}
+              saved={!!saved}
+              onChange={(patch) => setConfigurationInput((old) => ({ ...old, ...patch }))}
+              onService={(value) => {
+                if (serviceField.current) serviceField.current.value = value;
+              }}
+            />
+          ) : null}
           <label className={styles.field}>
             Request details
             <textarea
@@ -697,6 +721,25 @@ function DirectoryForm({
 }
 
 export function LeadWorkspace(props: Props) {
+  const { onDirty } = props;
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
+  const [epoch, setEpoch] = useState(0);
+  const hasDirty = Object.values(dirty).some(Boolean),
+    navigation = useUnsavedNavigation(hasDirty);
+  useEffect(() => onDirty?.(hasDirty), [onDirty, hasDirty]);
+  // A guarded handoff can discard and unmount in the same React batch, before
+  // the cleared local map reaches the reporting effect above.
+  useEffect(() => () => onDirty?.(false), [onDirty]);
+  function navigate(operation: () => void) {
+    navigation.navigate(() => {
+      setDirty({});
+      setEpoch((value) => value + 1);
+      operation();
+    });
+  }
+  function saved(region: string) {
+    setDirty((previous) => ({ ...previous, [region]: false }));
+  }
   const [filter, setFilter] = useState<"all" | "attention" | "ready">("attention");
   const [query, setQuery] = useState("");
   const selected = props.leads.find((lead) => lead.id === props.selectedId);
@@ -712,8 +755,22 @@ export function LeadWorkspace(props: Props) {
         .includes(query.trim().toLowerCase()),
   );
   return (
-    <div className={styles.intakeLayout}>
-      <aside className={styles.queue} aria-label="Lead attention queue">
+    <div
+      className={styles.intakeLayout}
+      onChangeCapture={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("form")) {
+          const region = target.closest("[data-dirty-region]")?.getAttribute("data-dirty-region");
+          if (region) setDirty((previous) => ({ ...previous, [region]: true }));
+        }
+      }}
+    >
+      {navigation.dialog}
+      <aside
+        className={styles.queue}
+        aria-label="Lead attention queue"
+        data-dirty-region="directory"
+      >
         <div className={styles.sectionHeading}>
           <div>
             <p className={styles.eyebrow}>INTAKE DESK</p>
@@ -726,7 +783,7 @@ export function LeadWorkspace(props: Props) {
           <button
             className={styles.primary}
             disabled={props.busy || !props.permissions.canCreateLead}
-            onClick={() => props.onSelect("")}
+            onClick={() => navigate(() => props.onSelect(""))}
           >
             New lead
           </button>
@@ -770,7 +827,7 @@ export function LeadWorkspace(props: Props) {
                 className={styles.queueRecord}
                 aria-pressed={selected?.id === lead.id}
                 disabled={props.busy}
-                onClick={() => props.onSelect(lead.id)}
+                onClick={() => navigate(() => props.onSelect(lead.id))}
               >
                 <span className={styles.recordTop}>
                   <span
@@ -799,41 +856,68 @@ export function LeadWorkspace(props: Props) {
         ) : null}
         {props.permissions.canCreateLead ? (
           <DirectoryForm
+            key={epoch}
             directory={props.directory}
             busy={props.busy}
-            onDirectory={props.onDirectory}
+            onDirectory={async (input) => {
+              const result = await props.onDirectory(input);
+              if (result) saved("directory");
+              return result;
+            }}
           />
         ) : null}
       </aside>
       <div className={styles.leadColumns}>
         <div className={styles.stack}>
-          <LeadForm
-            key={`form:${selected?.id ?? "new"}`}
-            lead={selected}
-            latest={selected}
-            directory={props.directory}
-            busy={props.busy}
-            disabled={selected ? !props.permissions.canEditLead : !props.permissions.canCreateLead}
-            onSave={props.onSave}
-          />
-          {selected ? (
-            <LeadReview
-              key={`review:${selected.id}`}
+          <div data-dirty-region="lead">
+            <LeadForm
+              key={`form:${selected?.id ?? "new"}:${epoch}`}
               lead={selected}
-              canReview={props.permissions.canReviewLead}
+              latest={selected}
+              directory={props.directory}
+              request={props.request}
               busy={props.busy}
-              onSave={props.onSave}
-              onSelect={props.onSelect}
+              disabled={
+                selected ? !props.permissions.canEditLead : !props.permissions.canCreateLead
+              }
+              onSave={async (input, id) => {
+                const result = await props.onSave(input, id);
+                if (result) saved("lead");
+                return result;
+              }}
             />
+          </div>
+          {selected ? (
+            <div data-dirty-region="review">
+              <LeadReview
+                key={`review:${selected.id}:${epoch}`}
+                lead={selected}
+                canReview={props.permissions.canReviewLead}
+                busy={props.busy}
+                onSave={async (input, id) => {
+                  const result = await props.onSave(input, id);
+                  if (result) saved("review");
+                  return result;
+                }}
+                onSelect={(id) => navigate(() => props.onSelect(id))}
+              />
+            </div>
           ) : null}
         </div>
         <div className={styles.stack}>
-          <SourceEvidence
-            lead={selected}
-            canEdit={props.permissions.canEditLead}
-            busy={props.busy}
-            onEvidence={props.onEvidence}
-          />
+          <div data-dirty-region="evidence">
+            <SourceEvidence
+              key={epoch}
+              lead={selected}
+              canEdit={props.permissions.canEditLead}
+              busy={props.busy}
+              onEvidence={async (id, input) => {
+                const result = await props.onEvidence(id, input);
+                if (result) saved("evidence");
+                return result;
+              }}
+            />
+          </div>
           {selected ? (
             <section className={styles.panel} aria-label="Associated proposals">
               <p className={styles.eyebrow}>CONTINUE THE WORK</p>
@@ -845,7 +929,7 @@ export function LeadWorkspace(props: Props) {
                     key={item.id}
                     className={styles.record}
                     disabled={props.busy}
-                    onClick={() => props.onProposal(selected, item.id)}
+                    onClick={() => navigate(() => props.onProposal(selected, item.id))}
                   >
                     <strong>{item.title}</strong>
                     <small>Legacy draft · Version {item.version}</small>
@@ -863,7 +947,7 @@ export function LeadWorkspace(props: Props) {
                   selected.status !== "ready_for_proposal" ||
                   !selected.readiness.readyForProposal
                 }
-                onClick={() => props.onProposal(selected)}
+                onClick={() => navigate(() => props.onProposal(selected))}
               >
                 Create proposal
               </button>

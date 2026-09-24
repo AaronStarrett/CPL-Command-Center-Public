@@ -254,7 +254,10 @@ export class SqlCplFieldRepository {
     return rows.rows.map(template);
   }
   async listTemplates(request: CplTenantRequest) {
-    return this.run(request, false, (e, a) => this.templates(e, a));
+    return this.run(request, false, (e, a) => {
+      if (a.role === "field-user") fail("CPL_ACCESS_DENIED");
+      return this.templates(e, a);
+    });
   }
   async saveTemplate(
     request: CplTenantRequest & {
@@ -362,7 +365,7 @@ export class SqlCplFieldRepository {
   ): Promise<CplFieldWorkspace> {
     const v = await this.visit(e, a, request),
       record = await this.record(e, a, request, false);
-    const templates = await this.templates(e, a);
+    const templates = a.role === "field-user" ? [] : await this.templates(e, a);
     const photos = await this.photos(e, a, request);
     const observations = await e.query<Row>(
       "SELECT * FROM cpl_field_observation_revisions WHERE organization_id=$1 AND project_id=$2 AND visit_id=$3 ORDER BY observation_id,revision DESC",
@@ -395,7 +398,7 @@ export class SqlCplFieldRepository {
       visit: v,
       revision: Number(record?.revision ?? 0),
       template: pinned,
-      templates,
+      templates: a.role === "field-user" ? (pinned ? [pinned] : []) : templates,
       answers,
       checklistRevisions: history.rows.map((row) => ({
         revision: Number(row.revision),

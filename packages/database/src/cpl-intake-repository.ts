@@ -2,6 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { emitCplBusinessEvent } from "./cpl-business-events.js";
 import { syncCplLeadAttention } from "./cpl-action-attention.js";
 import {
+  cplConfiguredIntakeIssues,
+  normalizeCplIntakeCustomValues,
+  type CplLeadConfiguration,
+  type CplCatalogSnapshot,
+  type CplIntakeCustomValues,
+} from "@bea/domain/cpl-company";
+import {
+  catalogSnapshot,
+  companyJson,
+  readCplCatalog,
+  readCplDirectory,
+  readCplIntakePolicy,
+} from "./cpl-company-data.js";
+import {
   CPL_LEAD_EDITABLE_FIELDS,
   cplLeadMatchReasons,
   evaluateCplLeadReadiness,
@@ -35,6 +49,7 @@ export interface CplWorkflowLead extends CplLeadFields {
   readonly duplicateCandidates: CplLeadDuplicateCandidate[];
   readonly duplicateReview: CplLeadDuplicateReview;
   readonly evidence: CplLeadEvidence[];
+  readonly configuration?: CplLeadConfiguration;
 }
 type Row = Record<string, unknown>;
 type LeadInput = Partial<CplLeadFields> & {
@@ -42,6 +57,8 @@ type LeadInput = Partial<CplLeadFields> & {
   idempotencyKey: string;
   sourceReference?: string;
   evidenceNote?: string;
+  catalogItemId?: string | null;
+  customValues?: CplIntakeCustomValues;
 };
 type EditInput = Partial<CplLeadFields> & {
   leadId: string;
@@ -49,6 +66,10 @@ type EditInput = Partial<CplLeadFields> & {
   duplicateDisposition?: "unreviewed" | "distinct" | "duplicate";
   duplicateReason?: string;
   duplicateLeadId?: string | null;
+  catalogItemId?: string | null;
+  customValues?: CplIntakeCustomValues;
+  refreshDirectory?: boolean;
+  refreshCatalog?: boolean;
 };
 export class CplIntakeError extends Error {
   constructor(readonly code: string) {
@@ -141,6 +162,7 @@ async function mutation(
   kind: string,
   key: string,
   input: unknown,
+  legacyReplay?: (prior: Row) => Promise<boolean>,
 ) {
   if (typeof key !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/u.test(key))
     fail("CPL_INVALID_IDEMPOTENCY_KEY");
@@ -155,14 +177,17 @@ async function mutation(
     "SELECT request_hash,resource_id FROM cpl_workflow_mutations WHERE organization_id=$1 AND mutation_kind=$2 AND idempotency_key=$3 FOR UPDATE",
     [access.organizationId, kind, key],
   );
-  if (prior.rows[0]?.request_hash !== requestHash) fail("CPL_IDEMPOTENCY_CONFLICT");
-  return { id: String(prior.rows[0].resource_id), created: false };
+  const receipt = prior.rows[0];
+  if (!receipt) fail("CPL_IDEMPOTENCY_CONFLICT");
+  if (receipt.request_hash !== requestHash && !(await legacyReplay?.(receipt)))
+    fail("CPL_IDEMPOTENCY_CONFLICT");
+  return { id: String(receipt.resource_id), created: false };
 }
 function version(value: number) {
   if (!Number.isSafeInteger(value) || value < 1) fail("CPL_INVALID_INPUT");
 }
 function permissions(access: CplTenantAccess): CplWorkflowPermissions {
-  const write = cplTenantRoleAllows(access.role, "records:write");
+  const write = cplTenantRoleAllows(access.role, "records:write") && access.role !== "field-user";
   return {
     canCreateLead: write,
     canEditLead: write,
@@ -189,35 +214,51 @@ export class SqlCplIntakeRepository {
       access.organizationId,
     ]);
   }
-  /** Directory names are immutable. Selecting a reference snapshots its fields;
-   * ordinary lead corrections never update other leads' shared directory data. */
+  /** Selecting or explicitly refreshing a reference captures current directory
+   * details. Existing lead/source snapshots remain independent of later edits. */
   private async resolve(
     executor: SqlExecutor,
     access: CplTenantAccess,
     value: CplLeadFields,
     previous?: CplLeadFields,
+    refresh = false,
   ) {
     const result = { ...value };
     const load = async (
       table: "cpl_customers" | "cpl_contacts" | "cpl_sites",
       recordId: string,
     ) => {
-      const found = await executor.query<Row>(
-        `SELECT * FROM ${table} WHERE organization_id=$1 AND id=$2`,
-        [access.organizationId, recordId],
-      );
-      return found.rows[0] ?? fail("CPL_RECORD_NOT_FOUND");
+      const kind =
+        table === "cpl_customers" ? "customer" : table === "cpl_contacts" ? "contact" : "site";
+      const found = await readCplDirectory(executor, access.organizationId, kind, recordId);
+      if (!found) fail("CPL_RECORD_NOT_FOUND");
+      const priorId =
+        kind === "customer"
+          ? previous?.customerId
+          : kind === "contact"
+            ? previous?.contactId
+            : previous?.siteId;
+      if (found.status !== "active" && (refresh || priorId !== recordId))
+        fail("CPL_DIRECTORY_ARCHIVED");
+      return found;
     };
     if (value.customerId) {
       const customer = await load("cpl_customers", value.customerId);
-      if (!previous || previous.customerId !== value.customerId)
+      if (refresh || !previous || previous.customerId !== value.customerId)
         result.customerName = String(customer.name);
     }
     if (value.contactId) {
       const contact = await load("cpl_contacts", value.contactId);
-      if (contact.customer_id && contact.customer_id !== value.customerId)
+      if (
+        contact.customerId &&
+        contact.customerId !== value.customerId &&
+        (refresh ||
+          !previous ||
+          previous.contactId !== value.contactId ||
+          previous.customerId !== value.customerId)
+      )
         fail("CPL_REFERENCE_CONFLICT");
-      if (!previous || previous.contactId !== value.contactId) {
+      if (refresh || !previous || previous.contactId !== value.contactId) {
         result.contactName = String(contact.name);
         result.contactEmail = contact.email == null ? null : String(contact.email);
         result.contactPhone = String(contact.phone);
@@ -225,8 +266,16 @@ export class SqlCplIntakeRepository {
     }
     if (value.siteId) {
       const site = await load("cpl_sites", value.siteId);
-      if (site.customer_id && site.customer_id !== value.customerId) fail("CPL_REFERENCE_CONFLICT");
-      if (!previous || previous.siteId !== value.siteId) {
+      if (
+        site.customerId &&
+        site.customerId !== value.customerId &&
+        (refresh ||
+          !previous ||
+          previous.siteId !== value.siteId ||
+          previous.customerId !== value.customerId)
+      )
+        fail("CPL_REFERENCE_CONFLICT");
+      if (refresh || !previous || previous.siteId !== value.siteId) {
         result.siteName = String(site.name);
         result.siteAddress = String(site.address);
       }
@@ -239,6 +288,43 @@ export class SqlCplIntakeRepository {
       if (!member.rows[0]) fail("CPL_ASSIGNEE_UNAVAILABLE");
     }
     return result;
+  }
+  private async configuration(
+    executor: SqlExecutor,
+    access: CplTenantAccess,
+    input: LeadInput | EditInput,
+    value: CplLeadFields,
+    prior?: Row,
+  ) {
+    const policy = await readCplIntakePolicy(executor, access.organizationId);
+    let catalog = prior?.catalog_snapshot
+      ? companyJson<CplCatalogSnapshot>(prior.catalog_snapshot)
+      : null;
+    const selected =
+      input.catalogItemId === undefined ? (catalog?.id ?? null) : intakeId(input.catalogItemId);
+    const refresh = "refreshCatalog" in input && input.refreshCatalog === true;
+    if (selected && (!catalog || catalog.id !== selected || refresh)) {
+      const current = await readCplCatalog(executor, access.organizationId, selected);
+      if (!current) fail("CPL_RECORD_NOT_FOUND");
+      if (current.status !== "active") fail("CPL_CATALOG_ARCHIVED");
+      catalog = catalogSnapshot(current);
+    } else if (!selected) catalog = null;
+    if (catalog) value.requestedService = catalog.workflowKey;
+    const previousValues = companyJson<CplIntakeCustomValues>(prior?.custom_values ?? {});
+    const customValues =
+      input.customValues === undefined
+        ? previousValues
+        : normalizeCplIntakeCustomValues(input.customValues, policy.input, previousValues);
+    const reviewed =
+      input.status === "ready_for_proposal"
+        ? policy.version
+        : (prior?.reviewed_policy_version ?? null);
+    return {
+      catalog,
+      customValues,
+      reviewedPolicyVersion: reviewed == null ? null : Number(reviewed),
+      policyVersion: policy.version,
+    };
   }
   private async candidates(
     executor: SqlExecutor,
@@ -281,6 +367,7 @@ export class SqlCplIntakeRepository {
     access: CplTenantAccess,
     row: Row,
   ): Promise<CplWorkflowLead> {
+    if (access.role === "field-user") fail("CPL_ACCESS_DENIED");
     const value = fields(row),
       leadId = String(row.id);
     const duplicateCandidates = await this.candidates(executor, access, leadId, value);
@@ -317,6 +404,29 @@ export class SqlCplIntakeRepository {
       );
       inactiveAssignee = !member.rows[0];
     }
+    const policy = await readCplIntakePolicy(executor, access.organizationId);
+    const customValues = companyJson<CplIntakeCustomValues>(row.custom_values ?? {});
+    const readiness = evaluateCplLeadReadiness(value, {
+      inactiveAssignee,
+      unresolvedDuplicates:
+        duplicateCandidates.length > 0 && duplicateReview.disposition === "unreviewed",
+      markedDuplicate: duplicateReview.disposition === "duplicate",
+    });
+    readiness.missingInformation.push(
+      ...cplConfiguredIntakeIssues(value, policy.input, customValues),
+    );
+    if (
+      value.status === "ready_for_proposal" &&
+      Number(row.reviewed_policy_version ?? 0) !== policy.version
+    )
+      readiness.conflicts.push({
+        code: "company.policy_review_required",
+        message:
+          "The intake requirements changed. Review this lead against the current saved policy.",
+      });
+    readiness.readyForProposal =
+      !readiness.missingInformation.some((item) => item.severity === "blocking") &&
+      !readiness.conflicts.length;
     return {
       ...value,
       id: leadId,
@@ -339,12 +449,17 @@ export class SqlCplIntakeRepository {
         createdAt: iso(item.created_at),
         actorIdentityId: String(item.actor_identity_id),
       })),
-      readiness: evaluateCplLeadReadiness(value, {
-        inactiveAssignee,
-        unresolvedDuplicates:
-          duplicateCandidates.length > 0 && duplicateReview.disposition === "unreviewed",
-        markedDuplicate: duplicateReview.disposition === "duplicate",
-      }),
+      readiness,
+      configuration: {
+        catalog: row.catalog_snapshot
+          ? companyJson<CplCatalogSnapshot>(row.catalog_snapshot)
+          : null,
+        customValues,
+        policyVersion: policy.version,
+        reviewedPolicyVersion:
+          row.reviewed_policy_version == null ? null : Number(row.reviewed_policy_version),
+        policy: policy.input,
+      },
     };
   }
   protected async intakeLeads(
@@ -353,6 +468,7 @@ export class SqlCplIntakeRepository {
     rows: readonly Row[],
   ) {
     await this.protect(executor);
+    if (access.role === "field-user") return [];
     const result: CplWorkflowLead[] = [];
     for (const row of rows) result.push(await this.intakeLead(executor, access, row));
     return result;
@@ -363,6 +479,7 @@ export class SqlCplIntakeRepository {
     executor: SqlExecutor,
     access: CplTenantAccess,
   ): Promise<void> {
+    if (!cplTenantRoleAllows(access.role, "leads:read")) return;
     const rows = await executor.query<Row>(
       "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND status IN('new','needs_info','ready_for_proposal') ORDER BY id",
       [access.organizationId],
@@ -374,16 +491,18 @@ export class SqlCplIntakeRepository {
     executor: SqlExecutor,
     access: CplTenantAccess,
   ): Promise<CplIntakeDirectory> {
+    if (!cplTenantRoleAllows(access.role, "directory:read"))
+      return { customers: [], contacts: [], sites: [], members: [] };
     const customers = await executor.query<Row>(
-      "SELECT id,name FROM cpl_customers WHERE organization_id=$1 ORDER BY name,id LIMIT 200",
+      "SELECT b.id,COALESCE(c.snapshot->>'name',b.name) AS name FROM cpl_customers b LEFT JOIN cpl_directory_current c ON c.organization_id=b.organization_id AND c.id=b.id AND c.kind='customer' WHERE b.organization_id=$1 AND COALESCE(c.status,'active')='active' ORDER BY name,b.id LIMIT 200",
       [access.organizationId],
     );
     const contacts = await executor.query<Row>(
-      "SELECT id,customer_id,name,email,phone FROM cpl_contacts WHERE organization_id=$1 ORDER BY name,id LIMIT 200",
+      "SELECT b.id,CASE WHEN c.id IS NULL THEN b.customer_id ELSE c.customer_id END AS customer_id,COALESCE(c.snapshot->>'name',b.name) AS name,CASE WHEN c.id IS NULL THEN b.email ELSE c.snapshot->>'email' END AS email,COALESCE(c.snapshot->>'phone',b.phone) AS phone FROM cpl_contacts b LEFT JOIN cpl_directory_current c ON c.organization_id=b.organization_id AND c.id=b.id AND c.kind='contact' WHERE b.organization_id=$1 AND COALESCE(c.status,'active')='active' ORDER BY name,b.id LIMIT 200",
       [access.organizationId],
     );
     const sites = await executor.query<Row>(
-      "SELECT id,customer_id,name,address FROM cpl_sites WHERE organization_id=$1 ORDER BY name,id LIMIT 200",
+      "SELECT b.id,CASE WHEN c.id IS NULL THEN b.customer_id ELSE c.customer_id END AS customer_id,COALESCE(c.snapshot->>'name',b.name) AS name,COALESCE(c.snapshot->>'address',b.address) AS address FROM cpl_sites b LEFT JOIN cpl_directory_current c ON c.organization_id=b.organization_id AND c.id=b.id AND c.kind='site' WHERE b.organization_id=$1 AND COALESCE(c.status,'active')='active' ORDER BY name,b.id LIMIT 200",
       [access.organizationId],
     );
     const members = await executor.query<Row>(
@@ -417,7 +536,7 @@ export class SqlCplIntakeRepository {
   async getIntakeDirectory(request: CplTenantRequest): Promise<CplIntakeDirectory> {
     return this.intakeTenants.withTenantTransaction(
       request,
-      "records:read",
+      "directory:read",
       "intake-job-tracker",
       async (executor, access) => {
         await this.protect(executor);
@@ -455,10 +574,21 @@ export class SqlCplIntakeRepository {
     if (value.kind === "site" && (value.email || value.phone)) fail("CPL_INVALID_INPUT");
     return this.intakeTenants.withTenantTransaction(
       request,
-      "records:write",
+      "directory:write",
       "intake-job-tracker",
       async (executor, access) => {
         await this.protect(executor);
+        await this.lockIntake(executor, access);
+        if (value.customerId) {
+          const customer = await readCplDirectory(
+            executor,
+            access.organizationId,
+            "customer",
+            value.customerId,
+          );
+          if (!customer) fail("CPL_RECORD_NOT_FOUND");
+          if (customer.status !== "active") fail("CPL_DIRECTORY_ARCHIVED");
+        }
         if (
           value.customerId &&
           !(
@@ -528,65 +658,134 @@ export class SqlCplIntakeRepository {
     );
   }
   async createLead(request: CplTenantRequest & LeadInput): Promise<CplWorkflowLead> {
+    return this.intakeTenants.withTenantTransaction(
+      request,
+      "records:write",
+      "intake-job-tracker",
+      (executor, access) => this.createLeadInTransaction(executor, access, request),
+    );
+  }
+  /** Trusted server composition only. Caller holds live tenant authority in this
+   * same transaction; inbound jobs obtain it exclusively from their SQL fence. */
+  async createLeadInTransaction(
+    executor: SqlExecutor,
+    access: CplTenantAccess,
+    request: LeadInput,
+  ): Promise<CplWorkflowLead> {
     // Exclude the server-default received time from replay identity, while storing
     // it only on the first accepted request. Repeating an ambiguous POST is stable.
     const sourceReference = intakeText(request.sourceReference ?? "", 2000) || null;
     const evidenceNote = intakeText(request.evidenceNote ?? "", 20_000) || null;
     const normalized = normalizeCplLeadFields(request as unknown as Record<string, unknown>);
     if (normalized.status !== "new") fail("CPL_LEAD_REVIEW_REQUIRED");
-    return this.intakeTenants.withTenantTransaction(
-      request,
-      "records:write",
-      "intake-job-tracker",
-      async (executor, access) => {
-        await this.protect(executor);
-        await this.lockIntake(executor, access);
-        const value = await this.resolve(executor, access, normalized);
-        const resource = await mutation(executor, access, "lead.create", request.idempotencyKey, {
-          ...value,
+    if (!cplTenantRoleAllows(access.role, "records:write")) fail("CPL_ACCESS_DENIED");
+    if (!cplTenantRoleAllows(access.role, "leads:read")) fail("CPL_ACCESS_DENIED");
+    await this.protect(executor);
+    await this.lockIntake(executor, access);
+    const callerIntent = {
+      ...normalized,
+      receivedAt: request.receivedAt ?? null,
+      sourceReference,
+      evidenceNote,
+      catalogItemId: request.catalogItemId ?? null,
+      customValues: request.customValues ?? {},
+    };
+    // Resolve a committed receipt before consulting mutable directory/catalog
+    // records. Authorization and the tenant lock above still apply on replay.
+    const resource = await mutation(
+      executor,
+      access,
+      "lead.create",
+      request.idempotencyKey,
+      { format: "caller-intent-v1", ...callerIntent },
+      async (prior) => {
+        // Earlier receipts hashed server-resolved fields. Reconstruct that
+        // exact historical hash from the immutable original capture, never
+        // today's references or an edited lead. Do not rewrite old receipts.
+        const evidence = await executor.query<Row>(
+          "SELECT capture_json FROM cpl_lead_evidence WHERE organization_id=$1 AND lead_id=$2 AND kind='initial_capture'",
+          [access.organizationId, prior.resource_id],
+        );
+        if (!evidence.rows[0]) return false;
+        const capture = companyJson<Row>(evidence.rows[0].capture_json);
+        const resolved = { ...normalized };
+        if (normalized.customerId && normalized.customerId === capture.customerId)
+          resolved.customerName = String(capture.customerName);
+        if (normalized.contactId && normalized.contactId === capture.contactId) {
+          resolved.contactName = String(capture.contactName);
+          resolved.contactEmail = capture.contactEmail as string | null;
+          resolved.contactPhone = String(capture.contactPhone);
+        }
+        if (normalized.siteId && normalized.siteId === capture.siteId) {
+          resolved.siteName = String(capture.siteName);
+          resolved.siteAddress = String(capture.siteAddress);
+        }
+        const catalog = (capture.configuration as CplLeadConfiguration | undefined)?.catalog;
+        if (catalog && intakeId(request.catalogItemId) === catalog.id)
+          resolved.requestedService = String(capture.requestedService);
+        const legacy = {
+          ...resolved,
           receivedAt: request.receivedAt ?? null,
           sourceReference,
           evidenceNote,
-        });
-        if (resource.created) {
-          const keys = CPL_LEAD_EDITABLE_FIELDS;
-          await executor.query(
-            `INSERT INTO cpl_workflow_leads(id,organization_id,created_by_identity_id,${keys.map((key) => columns[key]).join(",")}) VALUES($1,$2,$3,${keys.map((_key, index) => `$${index + 4}`).join(",")})`,
-            [
-              resource.id,
-              access.organizationId,
-              access.identityId,
-              ...keys.map((key) => value[key]),
-            ],
-          );
-          await executor.query(
-            "INSERT INTO cpl_lead_evidence(id,organization_id,lead_id,kind,label,reference,note,capture_json,actor_identity_id) VALUES($1,$2,$3,'initial_capture','Original intake capture',$4,$5,$6::jsonb,$7)",
-            [
-              randomUUID(),
-              access.organizationId,
-              resource.id,
-              sourceReference,
-              evidenceNote ?? value.details,
-              JSON.stringify(value),
-              access.identityId,
-            ],
-          );
-          await audit(executor, access, "lead.created", resource.id);
-        }
-        const row = await executor.query<Row>(
-          "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2",
-          [access.organizationId, resource.id],
+        };
+        return (
+          prior.request_hash ===
+            hash({
+              ...legacy,
+              catalogItemId: request.catalogItemId ?? null,
+              customValues: request.customValues ?? {},
+            }) ||
+          (!request.catalogItemId &&
+            Object.keys(request.customValues ?? {}).length === 0 &&
+            prior.request_hash === hash(legacy))
         );
-        const lead = await this.intakeLead(executor, access, row.rows[0]!);
-        await syncCplLeadAttention(executor, access, lead);
-        return lead;
       },
     );
+    if (resource.created) {
+      const value = await this.resolve(executor, access, normalized);
+      const configuration = await this.configuration(executor, access, request, value);
+      const keys = CPL_LEAD_EDITABLE_FIELDS;
+      await executor.query(
+        `INSERT INTO cpl_workflow_leads(id,organization_id,created_by_identity_id,${keys.map((key) => columns[key]).join(",")}) VALUES($1,$2,$3,${keys.map((_key, index) => `$${index + 4}`).join(",")})`,
+        [resource.id, access.organizationId, access.identityId, ...keys.map((key) => value[key])],
+      );
+      await executor.query(
+        "UPDATE cpl_workflow_leads SET catalog_snapshot=$3::jsonb,custom_values=$4::jsonb,reviewed_policy_version=$5 WHERE organization_id=$1 AND id=$2",
+        [
+          access.organizationId,
+          resource.id,
+          JSON.stringify(configuration.catalog),
+          JSON.stringify(configuration.customValues),
+          configuration.reviewedPolicyVersion,
+        ],
+      );
+      await executor.query(
+        "INSERT INTO cpl_lead_evidence(id,organization_id,lead_id,kind,label,reference,note,capture_json,actor_identity_id) VALUES($1,$2,$3,'initial_capture','Original intake capture',$4,$5,$6::jsonb,$7)",
+        [
+          randomUUID(),
+          access.organizationId,
+          resource.id,
+          sourceReference,
+          evidenceNote ?? value.details,
+          JSON.stringify({ ...value, configuration }),
+          access.identityId,
+        ],
+      );
+      await audit(executor, access, "lead.created", resource.id);
+    }
+    const row = await executor.query<Row>(
+      "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 AND id=$2",
+      [access.organizationId, resource.id],
+    );
+    const lead = await this.intakeLead(executor, access, row.rows[0]!);
+    await syncCplLeadAttention(executor, access, lead);
+    return lead;
   }
   async listLeads(request: CplTenantRequest): Promise<readonly CplWorkflowLead[]> {
     return this.intakeTenants.withTenantTransaction(
       request,
-      "records:read",
+      "leads:read",
       "intake-job-tracker",
       async (executor, access) => {
         const rows = await executor.query<Row>(
@@ -600,7 +799,7 @@ export class SqlCplIntakeRepository {
   async getLead(request: CplTenantRequest & { leadId: string }): Promise<CplWorkflowLead> {
     return this.intakeTenants.withTenantTransaction(
       request,
-      "records:read",
+      "leads:read",
       "intake-job-tracker",
       async (executor, access) => {
         await this.protect(executor);
@@ -615,17 +814,24 @@ export class SqlCplIntakeRepository {
   }
   async updateLead(request: CplTenantRequest & EditInput): Promise<CplWorkflowLead> {
     version(request.expectedVersion);
+    for (const flag of [request.refreshDirectory, request.refreshCatalog])
+      if (flag !== undefined && typeof flag !== "boolean") fail("CPL_INVALID_INPUT");
     return this.intakeTenants.withTenantTransaction(
       request,
-      "records:read",
+      "leads:read",
       "intake-job-tracker",
       async (executor, access) => {
         await this.protect(executor);
         await this.lockIntake(executor, access);
         const reviewKeys = ["status", "disqualificationReason"];
-        const changesIntake = CPL_LEAD_EDITABLE_FIELDS.some(
-          (key) => !reviewKeys.includes(key) && request[key] !== undefined,
-        );
+        const changesIntake =
+          request.catalogItemId !== undefined ||
+          request.customValues !== undefined ||
+          request.refreshDirectory === true ||
+          request.refreshCatalog === true ||
+          CPL_LEAD_EDITABLE_FIELDS.some(
+            (key) => !reviewKeys.includes(key) && request[key] !== undefined,
+          );
         const changesReview =
           request.status !== undefined ||
           request.disqualificationReason !== undefined ||
@@ -648,7 +854,9 @@ export class SqlCplIntakeRepository {
             access,
             normalizeCplLeadFields(request as unknown as Record<string, unknown>, previous),
             previous,
+            request.refreshDirectory === true,
           );
+        const configuration = await this.configuration(executor, access, request, value, row);
         if (request.duplicateDisposition !== undefined) {
           const disposition = request.duplicateDisposition;
           if (!["unreviewed", "distinct", "duplicate"].includes(disposition))
@@ -696,7 +904,17 @@ export class SqlCplIntakeRepository {
           ],
         );
         if (!changed.rows[0]) fail("CPL_LEAD_VERSION_CONFLICT");
-        const result = await this.intakeLead(executor, access, changed.rows[0]);
+        const configured = await executor.query<Row>(
+          "UPDATE cpl_workflow_leads SET catalog_snapshot=$3::jsonb,custom_values=$4::jsonb,reviewed_policy_version=$5 WHERE organization_id=$1 AND id=$2 RETURNING *",
+          [
+            access.organizationId,
+            row.id,
+            JSON.stringify(configuration.catalog),
+            JSON.stringify(configuration.customValues),
+            configuration.reviewedPolicyVersion,
+          ],
+        );
+        const result = await this.intakeLead(executor, access, configured.rows[0]!);
         if (value.status === "ready_for_proposal" && !result.readiness.readyForProposal)
           fail("CPL_LEAD_NOT_READY");
         await audit(
@@ -744,6 +962,7 @@ export class SqlCplIntakeRepository {
       "records:write",
       "intake-job-tracker",
       async (executor, access) => {
+        if (!cplTenantRoleAllows(access.role, "leads:read")) fail("CPL_ACCESS_DENIED");
         await this.protect(executor);
         await this.lockIntake(executor, access);
         const row = (

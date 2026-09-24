@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   runtime: null as CplHostedRuntime | null,
   issue: vi.fn(),
   runtimeCalls: vi.fn(),
+  personas: vi.fn(),
+  readiness: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("../../apps/web/lib/hosted-auth", async (original) => ({
@@ -22,6 +24,8 @@ vi.mock("../../apps/web/lib/hosted-auth", async (original) => ({
 }));
 vi.mock("../../apps/web/lib/local-development-auth", () => ({
   issueLocalDevelopmentSession: state.issue,
+  listLocalDevelopmentPersonas: state.personas,
+  localDevelopmentEntryReadiness: state.readiness,
 }));
 import {
   hostedSession,
@@ -31,6 +35,7 @@ import {
   hostedPasskeyOptions,
   localDevelopmentSignIn,
   localDevelopmentStatus,
+  localDevelopmentConfig,
 } from "../../apps/web/lib/hosted-auth-routes";
 const origin = "http://127.0.0.1:3400",
   token = "b".repeat(43),
@@ -70,7 +75,7 @@ beforeEach(() => {
     authenticatedAt: now,
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
     absoluteExpiresAt: new Date(Date.now() + 8 * 3600000).toISOString(),
-    mfaVerifiedAt: now,
+    mfaVerifiedAt: null,
     selectedOrganizationId: null,
     csrfTokenHash: hostedTokenHash(csrf),
     platformAdministrator: true,
@@ -90,6 +95,13 @@ beforeEach(() => {
   );
   state.runtime = { auth, origin } as CplHostedRuntime;
   state.issue.mockResolvedValue({ sessionToken: token, csrfToken: csrf, session });
+  state.personas.mockResolvedValue([{ key: "legacy-owner", label: "Existing development owner" }]);
+  state.readiness.mockResolvedValue({
+    ready: true,
+    code: "CPL_LOCAL_ENTRY_READY",
+    schemaHead: "synthetic",
+    personaKeys: ["legacy-owner"],
+  });
 });
 afterEach(() => vi.unstubAllEnvs());
 function request(
@@ -113,6 +125,157 @@ function request(
   });
 }
 describe("local development HTTP contract", () => {
+  it("refuses readiness without setting session cookies when schema prerequisites fail", async () => {
+    const { CplHostedAuthenticationError } = await import("@bea/security/hosted");
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      state.readiness.mockRejectedValueOnce(
+        new CplHostedAuthenticationError("CPL_LOCAL_SCHEMA_NOT_READY", 503),
+      );
+      const response = await localDevelopmentStatus(request("/api/auth/local/status"));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "CPL_LOCAL_SCHEMA_NOT_READY" });
+      expect(response.headers.has("set-cookie")).toBe(false);
+      expect(state.issue).not.toHaveBeenCalled();
+      expect(JSON.parse(log.mock.calls[0]![0])).toMatchObject({ stage: "entry_readiness" });
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("checks the selected persona before issuing an actual session and retains existing cookies on refusal", async () => {
+    const { CplHostedAuthenticationError } = await import("@bea/security/hosted");
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      state.readiness.mockRejectedValueOnce(
+        new CplHostedAuthenticationError("CPL_LOCAL_PERSONA_UNAVAILABLE", 503),
+      );
+      const response = await localDevelopmentSignIn(
+        request("/api/auth/local/sign-in", "POST", JSON.stringify({ personaKey: "owner-alpha" })),
+      );
+      expect(state.readiness).toHaveBeenCalledWith(state.runtime, "owner-alpha");
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "CPL_LOCAL_PERSONA_UNAVAILABLE" });
+      expect(response.headers.has("set-cookie")).toBe(false);
+      expect(state.issue).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("retains the oversized-request refusal without issuing a session or logging the body", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const response = await localDevelopmentSignIn(
+        request(
+          "/api/auth/local/sign-in",
+          "POST",
+          JSON.stringify({ personaKey: "BODY_CANARY".repeat(4000) }),
+        ),
+      );
+      expect(response.status).toBe(413);
+      expect(await response.json()).toMatchObject({ code: "CPL_AUTH_REQUEST_TOO_LARGE" });
+      expect(state.runtimeCalls).not.toHaveBeenCalled();
+      expect(state.issue).not.toHaveBeenCalled();
+      expect(JSON.stringify(log.mock.calls)).not.toContain("BODY_CANARY");
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("correlates a session failure without logging private exception data or accepting a caller reference", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      state.issue.mockRejectedValueOnce(
+        new Error("postgresql://PRIVATE_PASSWORD@private.invalid/SESSION_CANARY"),
+      );
+      const response = await localDevelopmentSignIn(
+        request("/api/auth/local/sign-in", "POST", "{}", {
+          "x-cpl-correlation-id": "CALLER_SUPPLIED_CANARY",
+        }),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(503);
+      expect(Object.keys(body).sort()).toEqual(["code", "correlationId", "ok"]);
+      expect(body.correlationId).toMatch(
+        /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u,
+      );
+      expect(response.headers.get("X-CPL-Correlation-ID")).toBe(body.correlationId);
+      expect(response.headers.get("cache-control")).toBe("no-store, private");
+      expect(JSON.parse(log.mock.calls[0]![0])).toMatchObject({
+        event: "cpl.local.entry.failure",
+        correlationId: body.correlationId,
+        stage: "session_issuance",
+        code: "CPL_HOSTED_AUTH_UNAVAILABLE",
+      });
+      expect(JSON.stringify(log.mock.calls) + JSON.stringify(body)).not.toMatch(
+        /PRIVATE_PASSWORD|private\.invalid|SESSION_CANARY|CALLER_SUPPLIED_CANARY/u,
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("classifies missing schema by a bounded SQL code without exposing SQL and does not declare readiness", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      state.runtimeCalls.mockImplementationOnce(() => {
+        throw Object.assign(new Error("SELECT PRIVATE_SQL_CANARY"), {
+          code: "42P01",
+          detail: "PRIVATE_VALUE_CANARY",
+        });
+      });
+      const response = await localDevelopmentStatus(request("/api/auth/local/status"));
+      const body = await response.json();
+      expect(response.status).toBe(503);
+      expect(body.ready).not.toBe(true);
+      expect(JSON.parse(log.mock.calls[0]![0])).toMatchObject({
+        stage: "guarded_runtime",
+        category: "schema_contract_missing",
+      });
+      expect(JSON.stringify(log.mock.calls) + JSON.stringify(body)).not.toMatch(
+        /PRIVATE_SQL_CANARY|PRIVATE_VALUE_CANARY/u,
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("offers only safe fixed persona labels after runtime validation", async () => {
+    const response = await localDevelopmentConfig(request("/api/auth/local/config"));
+    expect(await response.json()).toEqual({
+      authenticationMode: "local-development",
+      synthetic: true,
+      personas: [{ key: "legacy-owner", label: "Existing development owner" }],
+    });
+    expect(state.runtimeCalls).toHaveBeenCalledOnce();
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+  });
+  it("accepts only a fixed persona key, without role or provider claims", async () => {
+    const response = await localDevelopmentSignIn(
+      request(
+        "/api/auth/local/sign-in",
+        "POST",
+        JSON.stringify({ personaKey: "platform-operator" }),
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(state.issue).toHaveBeenCalledWith(
+      state.runtime,
+      expect.any(Request),
+      token,
+      "platform-operator",
+    );
+    for (const input of [
+      { personaKey: "unregistered" },
+      { personaKey: "owner-alpha", role: "owner" },
+      { personaKey: 5 },
+    ]) {
+      expect(
+        (
+          await localDevelopmentSignIn(
+            request("/api/auth/local/sign-in", "POST", JSON.stringify(input)),
+          )
+        ).status,
+      ).toBe(400);
+    }
+    expect(state.issue).toHaveBeenCalledOnce();
+  });
   it("returns a local descriptor while anonymous without claiming authentication", async () => {
     const response = await hostedSession(
       request("/api/auth/session", "GET", undefined, { cookie: "" }),
@@ -129,7 +292,7 @@ describe("local development HTTP contract", () => {
     expect(await (await hostedSession(request("/api/auth/session"))).json()).toMatchObject({
       authenticated: true,
       synthetic: true,
-      session: { hasPasskey: false, stepUpRequired: false },
+      session: { hasPasskey: false, stepUpRequired: true },
     });
   });
   it("tampered local signatures never reach session persistence", async () => {

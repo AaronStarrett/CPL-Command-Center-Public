@@ -3,4 +3,5 @@ export * from "./hosted-authentication-contracts.js";
 export * from "./google-oidc.js";
 export * from "./hosted-authentication.js";
 export * from "./local-development-auth.js";
+export * from "./local-development-personas.js";
 export type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";

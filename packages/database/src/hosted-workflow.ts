@@ -14,6 +14,8 @@ import { processCplAutomationJob } from "./cpl-automation-worker.js";
 import type { DatabaseAdapter, SqlExecutor } from "./adapter.js";
 import {
   SqlCplTenantRepository,
+  cplTenantRoleAllows,
+  CplTenantAccessError,
   type CplTenantAccess,
   type CplTenantRequest,
 } from "./tenant-repository.js";
@@ -187,6 +189,11 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
       request,
       ["intake-job-tracker", "proposal-builder"],
       async (executor, access) => {
+        if (
+          !cplTenantRoleAllows(access.role, "leads:read") ||
+          !cplTenantRoleAllows(access.role, "commercial:read")
+        )
+          throw new CplTenantAccessError();
         const leads = await executor.query<Row>(
           "SELECT * FROM cpl_workflow_leads WHERE organization_id=$1 ORDER BY created_at DESC,id LIMIT 100",
           [access.organizationId],
@@ -222,7 +229,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
       content = text(request.content, 50_000);
     return this.tenants.withTenantTransaction(
       request,
-      "records:write",
+      "commercial:write",
       "proposal-builder",
       async (executor, access) => {
         await this.protect(executor);
@@ -279,7 +286,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
       fail("CPL_INVALID_INPUT");
     return this.tenants.withTenantTransaction(
       request,
-      "records:write",
+      "commercial:write",
       "proposal-builder",
       async (executor, access) => {
         const result = await executor.query<Row>(
@@ -305,7 +312,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
     const leadId = request.leadId === undefined ? null : uuid(request.leadId);
     return this.tenants.withTenantTransaction(
       request,
-      "records:read",
+      "commercial:read",
       "proposal-builder",
       async (executor, access) =>
         (
@@ -321,7 +328,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
   ): Promise<CplProposalDraft> {
     return this.tenants.withTenantTransaction(
       request,
-      "records:read",
+      "commercial:read",
       "proposal-builder",
       async (executor, access) => {
         const result = await executor.query<Row>(
@@ -336,7 +343,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
   async listJobs(request: CplTenantRequest): Promise<readonly CplWorkflowJob[]> {
     return this.tenants.withTenantTransaction(
       request,
-      "records:read",
+      "commercial:read",
       "proposal-builder",
       async (executor, access) =>
         (
@@ -352,7 +359,7 @@ export class SqlCplWorkflowRepository extends SqlCplIntakeRepository {
   ): Promise<CplProposalDownload> {
     return this.tenants.withTenantTransaction(
       request,
-      "records:read",
+      "commercial:read",
       "proposal-builder",
       async (executor, access) => {
         const result = await executor.query<Row>(
@@ -382,11 +389,16 @@ export interface CplHostedJobResult {
   skipped?: number;
   executionId?: string;
 }
-/** A distinct scheduler login executes one bounded durable job. No request-provided
- * organization, forever loop, provider call or host filesystem is used. */
+/** A distinct scheduler login executes one bounded durable job. Authority comes
+ * from its stored tenant context. Ingestion provider access additionally requires
+ * explicit server composition and live fences; no request selects an adapter. */
 export async function processHostedJobs(
   database: DatabaseAdapter,
-  options: { claimOwner: string; limit?: number },
+  options: {
+    claimOwner: string;
+    limit?: number;
+    ingestion?: import("./cpl-integration-ports.js").CplIntegrationRepositoryOptions;
+  },
 ): Promise<CplHostedJobResult> {
   if ((options.limit ?? 1) !== 1 || !/^[A-Za-z0-9._:-]{1,120}$/u.test(options.claimOwner))
     fail("CPL_INVALID_JOB_INVOCATION");
@@ -402,6 +414,15 @@ export async function processHostedJobs(
       const row = selected.rows[0];
       if (!row) return null;
       if (Number(row.attempts) >= Number(row.max_attempts)) {
+        if (row.kind === "inbound.receipt.process" || row.kind === "integration.gmail.sync") {
+          // Fence an exhausted crash recovery before touching source status. Do
+          // not acquire the organization lock while holding the dispatch lock.
+          const exhausted = await executor.query<Row>(
+            "UPDATE cpl_workflow_jobs SET status='running',revision=revision+1,lease_token=$2,lease_owner=$3,lease_expires_at=clock_timestamp()+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING *",
+            [row.id, leaseToken, options.claimOwner],
+          );
+          return { ...exhausted.rows[0]!, exhausted: true };
+        }
         if (row.kind === "automation.recipe") {
           await executor.query("SELECT set_config('cpl.organization_id',$1,true)", [
             row.organization_id,
@@ -418,7 +439,7 @@ export async function processHostedJobs(
         return { ...row, exhausted: true };
       }
       const updated = await executor.query<Row>(
-        "UPDATE cpl_workflow_jobs SET status='running',revision=revision+1,attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,organization_id,kind,proposal_id,proposal_version,issued_by_identity_id,issued_membership_version,attempts,max_attempts",
+        "UPDATE cpl_workflow_jobs SET status='running',revision=revision+1,attempts=attempts+1,lease_token=$2,lease_owner=$3,lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '30 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,organization_id,kind,proposal_id,proposal_version,issued_by_identity_id,issued_membership_version,attempts,max_attempts,integration_source_id,integration_generation,integration_configuration_version,inbound_receipt_id",
         [row.id, leaseToken, options.claimOwner],
       );
       if (row.kind === "automation.recipe") {
@@ -440,6 +461,10 @@ export async function processHostedJobs(
   if (!claimed) return result;
   result.claimed = 1;
   if (claimed.exhausted) {
+    if (claimed.kind === "inbound.receipt.process" || claimed.kind === "integration.gmail.sync") {
+      const { failExhaustedCplIngestionJob } = await import("./cpl-ingestion-worker.js");
+      await failExhaustedCplIngestionJob(database, claimed, leaseToken);
+    }
     result.failed = 1;
     return result;
   }
@@ -452,6 +477,16 @@ export async function processHostedJobs(
     else result.failed = 1;
     return result;
   }
+  if (claimed.kind === "inbound.receipt.process" || claimed.kind === "integration.gmail.sync") {
+    const { processCplIngestionJob } = await import("./cpl-ingestion-worker.js");
+    const outcome = await processCplIngestionJob(database, claimed, leaseToken, options.ingestion);
+    if (outcome === "completed") result.completed = 1;
+    else if (outcome === "retrying") result.retried = 1;
+    else if (outcome === "skipped") result.skipped = 1;
+    else result.failed = 1;
+    return result;
+  }
+  if (claimed.kind !== "proposal.prepare") fail("CPL_INVALID_JOB_INVOCATION");
   try {
     await database.transaction(async (executor) => {
       await executor.query(

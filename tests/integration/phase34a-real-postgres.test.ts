@@ -20,7 +20,7 @@ import {
 
 const OWNER = DEMO_PERSONAS[0]!.id;
 const OPERATIONS = DEMO_PERSONAS[2]!.id;
-const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
+const LATEST_MIGRATION = "0039_cpl_durable_inbound.sql";
 
 function inspectPhase34aPostgresUrl(value: string | undefined) {
   const url = value?.trim() ?? "";

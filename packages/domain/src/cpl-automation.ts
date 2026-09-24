@@ -62,7 +62,15 @@ export interface CplBusinessEvent {
 export type CplAutomationStatus =
   "queued" | "running" | "succeeded" | "retrying" | "failed" | "skipped" | "cancelled";
 export type CplActionTargetKind =
-  "lead" | "proposal" | "project" | "visit" | "report" | "package" | "execution";
+  | "lead"
+  | "proposal"
+  | "project"
+  | "visit"
+  | "report"
+  | "package"
+  | "execution"
+  | "integration"
+  | "source_receipt";
 export interface CplActionTarget {
   kind: CplActionTargetKind;
   id: string;

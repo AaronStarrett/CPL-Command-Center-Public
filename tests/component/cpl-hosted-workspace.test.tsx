@@ -210,6 +210,71 @@ describe("hosted workspace organization and edit safety", () => {
             },
       );
     if (url === "/api/cpl/workspace") return json(workspace());
+    if (url === "/api/cpl-company/intake-policy")
+      return json({ version: 0, input: { requiredFields: [], customFields: [] } });
+    if (url.startsWith("/api/cpl-company/catalog?"))
+      return json({ items: [], total: 0, nextCursor: null, hasMore: false, limit: 25 });
+    if (url === "/api/cpl-company/workspace")
+      return json({
+        organizationId: selected,
+        profile: {
+          version: 0,
+          input: {
+            displayName: "Fictional Alpha",
+            legalName: "",
+            email: "",
+            phone: "",
+            address: "",
+            timeZone: "UTC",
+          },
+        },
+        intakePolicy: { version: 0, input: { requiredFields: [], customFields: [] } },
+        defaultCurrency: "USD",
+        permissions: {
+          canConfigure: true,
+          canReadDirectory: true,
+          canWriteDirectory: true,
+          canReadAudit: true,
+        },
+        readiness: [],
+        setup: { status: "incomplete", checks: [] },
+      });
+
+    if (url === "/api/cpl-admin/bootstrap")
+      return json({
+        identity: { id: "owner", displayName: "Fictional Owner" },
+        organizations: workspace().organizations,
+        selectedOrganizationId: selected,
+        membership: { role: "owner", version: 1 },
+        platform: { canProvision: false, assurance: "none" },
+        permissions: {
+          canManageMembers: true,
+          canGrantOwner: true,
+          canConfigureCompany: true,
+          canReadDirectory: true,
+          canWriteDirectory: true,
+          canReadAudit: true,
+        },
+        enabledModules: [
+          "intake-job-tracker",
+          "proposal-builder",
+          "award-to-project-launcher",
+          "field-report-assembler",
+        ],
+        roles: [],
+        localRecipients: [],
+      });
+    if (url === "/api/auth/local/config")
+      return json({
+        authenticationMode: "local-development",
+        synthetic: true,
+        personas: [
+          { key: "legacy-owner", label: "Existing development owner" },
+          { key: "platform-operator", label: "Synthetic platform operator" },
+        ],
+      });
+    if (url.startsWith("/api/cpl-admin/members?"))
+      return json({ items: [], total: 0, nextCursor: null, limit: 25 });
     if (url === "/api/cpl-automation/workspace") return json(actions());
     if (url.startsWith("/api/cpl-automation/tasks/")) return json(actions().tasks[0]);
     if (url === "/api/cpl-commercial/workspace")
@@ -275,6 +340,223 @@ describe("hosted workspace organization and edit safety", () => {
     fireEvent.click(screen.getByRole("button", { name: "Leads", exact: true }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save lead" })).toBeEnabled());
   }
+
+  it.each(["integration", "source_receipt"] as const)(
+    "routes Action Center %s attention into the exact company-scoped integration detail",
+    async (kind) => {
+      const targetId = "60000000-0000-4000-8000-000000000001";
+      fetchMock.mockImplementation(async (input, init) => {
+        const path = String(input);
+        if (path === "/api/cpl-admin/bootstrap") {
+          const data = await (await normalFetch(input, init)).json();
+          data.permissions.canReadIntegrations = true;
+          return json(data);
+        }
+        if (path === "/api/cpl-automation/workspace") {
+          const value = actions();
+          value.tasks[0]!.target = { kind, id: targetId, projectId: null, version: null };
+          value.tasks[0]!.availableActions = {
+            canAssign: false,
+            canStart: false,
+            canComplete: false,
+            canDismiss: false,
+          };
+          return json(value);
+        }
+        if (path === "/api/cpl-integrations/workspace")
+          return json({
+            permissions: {
+              canViewStatus: true,
+              canConfigure: true,
+              canAuthorize: true,
+              canOperate: true,
+              canReadSource: true,
+              canReprocess: true,
+            },
+            connections: { items: [], total: 0, nextCursor: null, limit: 25 },
+            forms: { items: [], total: 0, nextCursor: null, limit: 25 },
+            mappings: [],
+            counts: {
+              queued: 0,
+              processing: 0,
+              needsReview: 1,
+              linkedLead: 0,
+              rejected: 0,
+              failed: 0,
+              blocked: 0,
+            },
+            runtime: { providerMode: "local_fixture", liveVerification: "deferred" },
+          });
+        if (
+          path ===
+          `/api/cpl-integrations/${kind === "integration" ? "connections" : "receipts"}/${targetId}`
+        )
+          return json({ code: "CPL_INTEGRATION_NOT_FOUND" }, 404);
+        if (path.startsWith("/api/cpl-integrations/"))
+          return json({ items: [], total: 0, nextCursor: null, limit: 25 });
+        return normalFetch(input, init);
+      });
+      render(<Workspace />);
+      fireEvent.click(await screen.findByRole("button", { name: /Check current lead/u }));
+      fireEvent.click(screen.getByRole("button", { name: "Open related record" }));
+      await screen.findByRole("heading", { name: "Company integrations & intake" });
+      const expected = `/api/cpl-integrations/${kind === "integration" ? "connections" : "receipts"}/${targetId}`;
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some(([path]) => path === expected)).toBe(true),
+      );
+      const call = fetchMock.mock.calls.find(([path]) => path === expected)!;
+      expect(new Headers(call[1]?.headers).get("X-CPL-Organization")).toBe(orgA);
+      await screen.findByText("This integration record is not available in the selected company.");
+      expect(
+        fetchMock.mock.calls.some(([path]) => String(path).startsWith("/api/cpl-commercial/")),
+      ).toBe(false);
+    },
+  );
+
+  it("shows a safe local sign-in correlation reference and keeps the sign-in choice available", async () => {
+    localDevelopment = true;
+    signedIn = false;
+    const correlationId = "00000000-0000-4000-8000-000000000123";
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === "/api/auth/local/sign-in"
+        ? json(
+            { code: "CPL_HOSTED_AUTH_UNAVAILABLE", correlationId, message: "PRIVATE_SQL_CANARY" },
+            503,
+          )
+        : normalFetch(input, init),
+    );
+    render(<Workspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter development workspace" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Reference: ${correlationId}`);
+    expect(screen.queryByText(/PRIVATE_SQL_CANARY/u)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enter development workspace" })).toBeEnabled();
+  });
+
+  it("handles a non-JSON startup failure with its validated correlation header", async () => {
+    const correlationId = "00000000-0000-4000-8000-000000000124";
+    fetchMock.mockImplementation(
+      async () =>
+        new Response("PRIVATE_SERVER_HTML_CANARY", {
+          status: 503,
+          headers: { "X-CPL-Correlation-ID": correlationId, "Content-Type": "text/html" },
+        }),
+    );
+    render(<Workspace />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Reference: ${correlationId}`);
+    expect(
+      screen.queryByText(/PRIVATE_SERVER_HTML_CANARY|Unexpected token/u),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears discarded lead state across proposal handoff and later navigation without weakening Keep editing", async () => {
+    localDevelopment = true;
+    let switched = false;
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === "/api/auth/local/sign-in") switched = true;
+      if (path === "/api/cpl/workspace") {
+        const value = workspace();
+        value.leads[0]!.status = "ready_for_proposal";
+        value.leads[0]!.readiness = {
+          readyForProposal: true,
+          missingInformation: [],
+          conflicts: [],
+        };
+        return json(value);
+      }
+      const response = await normalFetch(input, init);
+      if (switched && path === "/api/auth/session") {
+        const value = await response.json();
+        value.identity = {
+          id: "operator",
+          displayName: "Synthetic platform operator",
+          email: null,
+        };
+        value.session.currentOrganizationId = null;
+        return json(value);
+      }
+      if (switched && path === "/api/cpl-admin/bootstrap") {
+        const value = await response.json();
+        value.identity = { id: "operator", displayName: "Synthetic platform operator" };
+        value.organizations = [];
+        value.selectedOrganizationId = null;
+        value.membership = null;
+        value.platform = { canProvision: true, assurance: "local-development" };
+        return json(value);
+      }
+      return response;
+    });
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: /^All\s*1$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Fictional inquiry/ }));
+    fireEvent.change(screen.getByLabelText("Next action"), {
+      target: { value: "Keep until deliberately discarded" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create proposal", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep editing", exact: true }));
+    expect(screen.getByLabelText("Next action")).toHaveValue("Keep until deliberately discarded");
+    expect(screen.queryByRole("heading", { name: "Proposals & projects" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create proposal", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard changes", exact: true }));
+    await screen.findByRole("heading", { name: "Proposals & projects" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Company settings", exact: true })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Company settings", exact: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Company settings & access" });
+    fireEvent.click(screen.getByRole("button", { name: "Leads", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Company settings", exact: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Development identity"), {
+      target: { value: "platform-operator" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Switch development identity" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/local/sign-in",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ personaKey: "platform-operator" }),
+        }),
+      ),
+    );
+    await screen.findByRole("button", { name: "Platform administration", exact: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([path, init]) => String(path).startsWith("/api/cpl/leads/") && init?.method === "PATCH",
+      ),
+    ).toBe(false);
+  });
+
+  it("clears a discarded lead on legacy handoff while retaining genuinely edited legacy drafts", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: /^All\s*1$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Fictional inquiry/ }));
+    fireEvent.change(screen.getByLabelText("Next action"), {
+      target: { value: "Discard only after confirming the handoff" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Fictional draft.*Legacy draft/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard changes", exact: true }));
+    await screen.findByRole("heading", { name: "Saved drafts" });
+    fireEvent.click(screen.getByRole("button", { name: "Company settings", exact: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Company settings & access" });
+    fireEvent.click(screen.getByRole("button", { name: "Leads", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /Fictional draft.*Legacy draft/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit draft", exact: true }));
+    fireEvent.change(screen.getByLabelText("Proposal title"), {
+      target: { value: "Keep this real legacy draft change" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Company settings", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep editing", exact: true }));
+    expect(screen.getByLabelText("Proposal title")).toHaveValue(
+      "Keep this real legacy draft change",
+    );
+    expect(screen.getByRole("heading", { name: "Edit proposal draft" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
 
   it("opens Action Center first and follows the exact tenant-scoped lead target", async () => {
     render(<Workspace />);
@@ -463,6 +745,7 @@ describe("hosted workspace organization and edit safety", () => {
     fireEvent.change(screen.getByLabelText("Organization", { exact: true }), {
       target: { value: orgB },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     await screen.findByRole("heading", { name: "Fictional Beta" });
     expect(screen.getByLabelText("Lead title")).toHaveValue("");
     fireEvent.click(screen.getByRole("button", { name: "Legacy drafts" }));
@@ -475,6 +758,7 @@ describe("hosted workspace organization and edit safety", () => {
     fireEvent.change(screen.getByLabelText("Organization", { exact: true }), {
       target: { value: orgA },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     await screen.findByRole("heading", { name: "Fictional Alpha" });
     expect(screen.getByLabelText("Proposal title")).toHaveValue("");
     expect(screen.getByLabelText("Manual proposal content")).toHaveValue("");
@@ -685,13 +969,83 @@ describe("hosted workspace organization and edit safety", () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Organization", exact: true })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Company settings", exact: true })).toBeEnabled(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Organization", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Company settings", exact: true }));
     expect(screen.getByRole("button", { name: "Refresh development sign-in" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Verify passkey" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await screen.findByRole("button", { name: "Enter development workspace" });
+  });
+
+  it("reloads current identity action data when personas switch within the same company", async () => {
+    localDevelopment = true;
+    let switched = false,
+      actionReads = 0;
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === "/api/auth/local/sign-in") switched = true;
+      if (path === "/api/cpl-automation/workspace") {
+        actionReads++;
+        const value = actions();
+        value.currentIdentityId = switched ? "member" : "owner";
+        value.tasks[0]!.title = switched ? "Member current action" : "Owner current action";
+        value.permissions.canConfigure = !switched;
+        return json(value);
+      }
+      const response = await normalFetch(input, init);
+      if (path === "/api/auth/session" && switched) {
+        const value = await response.json();
+        value.identity = {
+          id: "member",
+          displayName: "Synthetic member",
+          email: "member@example.invalid",
+        };
+        return json(value);
+      }
+      if (path === "/api/cpl-admin/bootstrap" && switched) {
+        const value = await response.json();
+        value.identity = { id: "member", displayName: "Synthetic member" };
+        value.membership.role = "member";
+        value.permissions.canConfigureCompany = false;
+        return json(value);
+      }
+      return response;
+    });
+    render(<Workspace />);
+    await screen.findByRole("button", { name: /Owner current action/ });
+    fireEvent.change(screen.getByLabelText("Development identity"), {
+      target: { value: "platform-operator" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Switch development identity" }));
+    await screen.findByRole("button", { name: /Member current action/ });
+    expect(screen.queryByRole("button", { name: /Owner current action/ })).not.toBeInTheDocument();
+    expect(actionReads).toBe(2);
+  });
+
+  it("retains dirty entries and blocks submission when the same identity's membership authority changes", async () => {
+    let changed = false;
+    fetchMock.mockImplementation(async (input, init) => {
+      const response = await normalFetch(input, init);
+      if (String(input) === "/api/cpl-admin/bootstrap" && changed) {
+        const value = await response.json();
+        value.membership = { role: "member", version: 2 };
+        return json(value);
+      }
+      return response;
+    });
+    await open();
+    fireEvent.change(screen.getByLabelText("Lead title"), {
+      target: { value: "Retained after authority change" },
+    });
+    changed = true;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh", exact: true }));
+    await screen.findByRole("button", { name: "Review current access" });
+    expect(screen.getByLabelText("Lead title")).toHaveValue("Retained after authority change");
+    const before = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST").length;
+    fireEvent.click(screen.getByRole("button", { name: "Save lead" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save lead" })).toBeEnabled());
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(before);
   });
 
   it("does not infer development sign-in from an incomplete descriptor", async () => {

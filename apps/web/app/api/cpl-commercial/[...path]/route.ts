@@ -48,6 +48,7 @@ const publicCodes = new Set([
   "CPL_PROPOSAL_NOT_READY",
   "CPL_PROPOSAL_ALREADY_EXISTS",
   "CPL_LEAD_NOT_READY",
+  "CPL_TEMPLATE_CURRENCY_CONFIRMATION_REQUIRED",
   "CPL_RECORD_NOT_FOUND",
   "CPL_IDEMPOTENCY_CONFLICT",
   "CPL_INVALID_IDEMPOTENCY_KEY",
@@ -87,6 +88,7 @@ function failure(error: unknown) {
                 "CPL_ARTIFACT_IMMUTABLE",
               ].includes(code) ||
               code === "CPL_LEAD_NOT_READY" ||
+              code === "CPL_TEMPLATE_CURRENCY_CONFIRMATION_REQUIRED" ||
               code === "CPL_ORGANIZATION_CONTEXT_CHANGED"
             ? 409
             : code.includes("INVALID") ||
@@ -190,6 +192,7 @@ export async function POST(request: Request, context: Context) {
             "templateId",
             "legacyDraftId",
             "allowAdditional",
+            "legacyTemplateCurrency",
             "idempotencyKey",
           ]);
           const templateId = optionalString(input, "templateId"),
@@ -201,6 +204,9 @@ export async function POST(request: Request, context: Context) {
               ...(templateId ? { templateId } : {}),
               ...(legacyDraftId ? { legacyDraftId } : {}),
               allowAdditional: optionalBoolean(input, "allowAdditional"),
+              ...(input.legacyTemplateCurrency === undefined
+                ? {}
+                : { legacyTemplateCurrency: field(input, "legacyTemplateCurrency") }),
               idempotencyKey: field(input, "idempotencyKey"),
             }),
             201,

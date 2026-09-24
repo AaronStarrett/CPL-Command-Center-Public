@@ -123,6 +123,27 @@ describe("commercial product HTTP security and artifact boundary", () => {
     expect(response.status).toBe(403);
     expect(stubs.createProject).not.toHaveBeenCalled();
   });
+  it("forwards explicit legacy price currency through the existing authenticated creation boundary", async () => {
+    stubs.createProposal.mockResolvedValue({ id: proposalId });
+    const response = await POST(
+      request("proposals", {
+        leadId: proposalId,
+        templateId: proposalId,
+        idempotencyKey: "currency-confirmed-key",
+        legacyTemplateCurrency: "USD",
+      }),
+      context("proposals"),
+    );
+    expect(response.status).toBe(201);
+    expect(stubs.createProposal).toHaveBeenCalledWith({
+      ...selected,
+      leadId: proposalId,
+      templateId: proposalId,
+      allowAdditional: false,
+      idempotencyKey: "currency-confirmed-key",
+      legacyTemplateCurrency: "USD",
+    });
+  });
   it("refuses caller-supplied organization, session and artifact bytes", async () => {
     for (const forged of [
       { organizationId: "forged" },

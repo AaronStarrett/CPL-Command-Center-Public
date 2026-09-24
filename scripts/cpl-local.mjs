@@ -186,6 +186,8 @@ export async function warmSetupPage({
   signal,
   onProgress = () => {},
   recognize = (body) => body.includes("CPL Command Center") && body.includes("Workspace setup"),
+  validateResponse,
+  retryConnection = true,
 } = {}) {
   const started = Date.now();
   const controller = new AbortController();
@@ -211,16 +213,20 @@ export async function warmSetupPage({
             response.on("error", reject);
             response.on("data", (chunk) => {
               body += chunk;
-              if (body.length > 262_144) {
+              if (Buffer.byteLength(body, "utf8") > 262_144) {
                 request.destroy(new Error("SETUP_RESPONSE_TOO_LARGE"));
               }
             });
             response.on("end", () => {
-              if (response.statusCode !== 200) {
-                reject(new Error("SETUP_HTTP_" + response.statusCode));
-              } else if (!recognize(body)) {
-                reject(new Error("SETUP_RESPONSE_NOT_RECOGNIZED"));
-              } else resolve();
+              try {
+                if (validateResponse) validateResponse(body, response);
+                else if (response.statusCode !== 200)
+                  throw new Error("SETUP_HTTP_" + response.statusCode);
+                else if (!recognize(body)) throw new Error("SETUP_RESPONSE_NOT_RECOGNIZED");
+                resolve();
+              } catch (error) {
+                reject(error);
+              }
             });
           });
           request.on("socket", (socket) => {
@@ -239,7 +245,7 @@ export async function warmSetupPage({
           if (signal?.aborted) throw signal.reason;
           throw error;
         }
-        if (error.code !== "ECONNREFUSED" && error.code !== "ECONNRESET") throw error;
+        if (!retryConnection || !["ECONNREFUSED", "ECONNRESET"].includes(error.code)) throw error;
         await delay(retryMs, undefined, { signal: controller.signal });
       }
     }
@@ -256,6 +262,207 @@ export async function warmSetupPage({
     clearTimeout(timeout);
     clearInterval(progress);
     signal?.removeEventListener("abort", abort);
+  }
+}
+
+const entryRoutes = [
+  "/workspace",
+  "/api/auth/session",
+  "/api/auth/local/config",
+  "/api/auth/local/status",
+];
+const personaKeys = new Set([
+  "legacy-owner",
+  "platform-operator",
+  "owner-alpha",
+  "owner-beta",
+  "manager",
+  "reviewer",
+  "field-staff",
+  "member",
+]);
+const entryFailureCodes = new Set([
+  "CPL_LOCAL_DEVELOPMENT_REFUSED",
+  "CPL_LOCAL_SCHEMA_EXPECTATION_MISSING",
+  "CPL_LOCAL_DATABASE_UNAVAILABLE",
+  "CPL_LOCAL_SCHEMA_NOT_READY",
+  "CPL_LOCAL_SESSION_PREREQUISITES_UNAVAILABLE",
+  "CPL_LOCAL_PERSONA_UNAVAILABLE",
+  "CPL_HOSTED_AUTH_UNAVAILABLE",
+  "CPL_PRODUCT_RUNTIME_NOT_READY",
+]);
+
+class LocalEntryReadinessError extends Error {
+  constructor(details) {
+    super("Local entry readiness failed: " + JSON.stringify(details));
+    this.name = "LocalEntryReadinessError";
+    this.details = details;
+  }
+}
+
+function entryFailure(route, category, response, value) {
+  const correlation = value?.correlationId ?? response?.headers["x-cpl-correlation-id"];
+  return new LocalEntryReadinessError({
+    state: "FAILED",
+    route,
+    category,
+    ...(response ? { status: response.statusCode } : {}),
+    ...(entryFailureCodes.has(value?.code) ? { code: value.code } : {}),
+    ...(typeof correlation === "string" &&
+    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/iu.test(correlation)
+      ? { correlationId: correlation }
+      : {}),
+  });
+}
+
+const exactKeys = (value, keys) =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.hasOwn(value, key));
+
+function validateEntryResponse(route, body, response) {
+  let value;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    /* HTML and compiler errors are never logged. */
+  }
+  if (response.statusCode !== 200) throw entryFailure(route, "HTTP_ERROR", response, value);
+  if (response.headers["set-cookie"] !== undefined)
+    throw entryFailure(route, "UNEXPECTED_SESSION_COOKIE", response);
+  if (route === "/workspace") {
+    if (!body.includes("CPL Command Center"))
+      throw entryFailure(route, "INVALID_CONTRACT", response);
+    return;
+  }
+  if (
+    !response.headers["content-type"]?.toLowerCase().startsWith("application/json") ||
+    !response.headers["cache-control"]
+      ?.toLowerCase()
+      .split(/\s*,\s*/u)
+      .includes("no-store")
+  )
+    throw entryFailure(route, "INVALID_RESPONSE_HEADERS", response);
+  const local = value?.authenticationMode === "local-development" && value?.synthetic === true;
+  let valid;
+  if (route === "/api/auth/session") {
+    valid =
+      exactKeys(value, ["authenticated", "authenticationMode", "synthetic"]) &&
+      local &&
+      value.authenticated === false;
+  } else if (route === "/api/auth/local/config") {
+    valid =
+      exactKeys(value, ["authenticationMode", "synthetic", "personas"]) &&
+      local &&
+      Array.isArray(value.personas) &&
+      value.personas.length > 0 &&
+      value.personas.length <= personaKeys.size &&
+      new Set(value.personas.map((item) => item?.key)).size === value.personas.length &&
+      value.personas.every(
+        (item) =>
+          exactKeys(item, ["key", "label"]) &&
+          personaKeys.has(item.key) &&
+          typeof item.label === "string" &&
+          item.label.length > 0 &&
+          item.label.length <= 128,
+      );
+  } else {
+    valid =
+      exactKeys(value, ["development", "ready"]) &&
+      value.development === true &&
+      value.ready === true;
+  }
+  if (!valid) throw entryFailure(route, "INVALID_CONTRACT", response);
+}
+
+/** GET-only anonymous entry checks. This never issues or replays a session. */
+export async function verifyLocalEntryReadiness({
+  origin = new URL(LOCAL_URL).origin,
+  timeoutMs = 480_000,
+  signal,
+  onProgress = () => {},
+  waitForListener = true,
+} = {}) {
+  const endpoint = new URL(origin);
+  if (
+    endpoint.protocol !== "http:" ||
+    endpoint.hostname !== "127.0.0.1" ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.pathname !== "/" ||
+    endpoint.search ||
+    endpoint.hash ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0
+  )
+    throw new Error("Invalid local readiness configuration.");
+  const started = Date.now();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const deadline = setTimeout(() => controller.abort(), timeoutMs);
+  let route = entryRoutes[0];
+  try {
+    for (const [index, nextRoute] of entryRoutes.entries()) {
+      route = nextRoute;
+      await warmSetupPage({
+        url: endpoint.origin + route,
+        timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)),
+        signal: controller.signal,
+        retryConnection: waitForListener && index === 0,
+        validateResponse: (body, response) => validateEntryResponse(route, body, response),
+        onProgress: () =>
+          onProgress({
+            state: route === "/api/auth/local/status" ? "CHECKING_DATABASE" : "CHECKING_ENTRY",
+            route,
+            elapsedMs: Date.now() - started,
+          }),
+      });
+    }
+    controller.signal.throwIfAborted();
+    const result = { state: "READY", elapsedMs: Date.now() - started };
+    onProgress(result);
+    return result;
+  } catch (error) {
+    const failure =
+      error instanceof LocalEntryReadinessError
+        ? error
+        : entryFailure(
+            route,
+            signal?.aborted
+              ? "CANCELLED"
+              : controller.signal.aborted
+                ? "TIMEOUT"
+                : ["ECONNREFUSED", "ECONNRESET"].includes(error?.code)
+                  ? error.code
+                  : "RESPONSE_FAILED",
+          );
+    onProgress({ ...failure.details, elapsedMs: Date.now() - started });
+    throw failure;
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+/** A prior READY is not proof that the application is responsive now. */
+export async function checkLocalLauncherReadiness(launcher, options = {}) {
+  if (!launcher) return { state: "STOPPED" };
+  if (launcher.readiness?.state !== "READY")
+    return { state: "STARTING", ...(launcher.readiness ?? {}) };
+  try {
+    return await verifyLocalEntryReadiness({
+      ...options,
+      timeoutMs: options.timeoutMs ?? 30_000,
+      waitForListener: false,
+    });
+  } catch (error) {
+    return error instanceof LocalEntryReadinessError
+      ? error.details
+      : { state: "FAILED", category: "READINESS_CHECK_FAILED" };
   }
 }
 
@@ -487,6 +694,9 @@ async function reuseExistingLauncher(root, paths) {
     await delay(2000);
     state = await requestControl(paths.pipe, { action: "status" });
   }
+  const current = await checkLocalLauncherReadiness(state);
+  if (current.state !== "READY")
+    throw new Error("The running application is not ready: " + JSON.stringify(current));
   openLocalBrowser();
   return true;
 }
@@ -591,6 +801,7 @@ export async function startLocal() {
         cwd: path.join(root, "apps", "web"),
         env: {
           ...environment,
+          ...database.integrationEnvironment,
           CPL_LOCAL_DEVELOPMENT_AUTH: "true",
           CPL_HOSTED_ENABLED: "false",
           CPL_LOCAL_DATABASE_URL: database.webUrl,
@@ -621,38 +832,16 @@ export async function startLocal() {
       process.stdout.write(
         "CPL_DEVELOPMENT=" +
           progress.state +
+          (progress.route ? " route=" + progress.route : "") +
           " elapsed=" +
           (progress.elapsedMs / 1000).toFixed(1) +
           "s\n",
       );
     };
-    const warmed = (async () => {
-      await warmSetupPage({
-        url: LOCAL_URL,
-        timeoutMs: 300_000,
-        signal: warmupController.signal,
-        recognize: (body) => body.includes("CPL Command Center"),
-        onProgress: (progress) =>
-          reportProgress({
-            ...progress,
-            state: progress.state === "READY" ? "CHECKING_DATABASE" : progress.state,
-          }),
-      });
-      return warmSetupPage({
-        url: "http://127.0.0.1:" + LOCAL_PORT + "/api/auth/local/status",
-        timeoutMs: 180_000,
-        signal: warmupController.signal,
-        recognize: (body) => {
-          try {
-            const value = JSON.parse(body);
-            return value.development === true && value.ready === true;
-          } catch {
-            return false;
-          }
-        },
-        onProgress: reportProgress,
-      });
-    })();
+    const warmed = verifyLocalEntryReadiness({
+      signal: warmupController.signal,
+      onProgress: reportProgress,
+    });
     try {
       await Promise.race([warmed, childClosed]);
     } catch (error) {
@@ -761,11 +950,18 @@ export async function doctorLocal() {
   let launcher = null;
   try {
     const response = await requestControl(paths.pipe, { action: "status" });
-    if (response.ok && response.root === root && response.repositoryId === REPOSITORY_ID)
+    if (
+      response.ok &&
+      response.root === root &&
+      response.repositoryId === REPOSITORY_ID &&
+      response.mode === "local-development" &&
+      response.url === LOCAL_URL
+    )
       launcher = response;
   } catch {
     /* No live owner is a normal stopped state. */
   }
+  const readiness = await checkLocalLauncherReadiness(launcher);
   process.stdout.write(
     JSON.stringify({
       code: "CPL_LOCAL_DOCTOR",
@@ -775,22 +971,19 @@ export async function doctorLocal() {
       workspaceCopies,
       tempDirectory: paths.temp,
       tempExists: existsSync(paths.temp),
-      launcher: launcher
-        ? launcher.readiness?.state === "READY"
-          ? "READY"
-          : "STARTING"
-        : "STOPPED_OR_UNREACHABLE",
-      readiness: launcher?.readiness ?? null,
+      launcher: launcher ? readiness.state : "STOPPED_OR_UNREACHABLE",
+      ownerState: launcher?.readiness?.state ?? null,
+      readiness,
       url: LOCAL_URL,
-      productRuntime:
-        launcher?.readiness?.state === "READY" ? "READY" : launcher ? "STARTING" : "STOPPED",
+      productRuntime: readiness.state,
       mode: "local-development",
       workersStarted: launcher?.database != null,
       providerCallsEnabled: false,
       databaseProvisioned: existsSync(developmentDatabasePaths(LOCAL_CACHE_ROOT).marker),
     }) + "\n",
   );
-  if (!dependencies.ok || workspaceCopies.state !== "FRESH") process.exitCode = 1;
+  if (!dependencies.ok || workspaceCopies.state !== "FRESH" || readiness.state === "FAILED")
+    process.exitCode = 1;
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

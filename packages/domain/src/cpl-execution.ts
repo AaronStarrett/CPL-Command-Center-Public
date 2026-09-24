@@ -114,6 +114,14 @@ export interface CplExecutionAgenda {
   items: CplExecutionAgendaItem[];
   truncated: boolean;
 }
+/** Assigned field navigation contains no commercial project, award, pricing,
+ * global directory, private operations notes or other staff's visits. */
+export interface CplAssignedWorkWorkspace {
+  currentIdentityId: string;
+  items: { projectId: string; projectReference: string; projectName: string; visit: CplVisit }[];
+  truncated: boolean;
+  permissions: { canCompleteAssignedVisits: boolean };
+}
 export interface CplVisitConflict {
   visitId: string;
   projectId: string;

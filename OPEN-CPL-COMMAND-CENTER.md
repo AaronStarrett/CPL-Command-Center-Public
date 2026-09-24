@@ -2,7 +2,7 @@
 
 Double-click **RUN-CPL-COMMAND-CENTER.cmd** in this folder. Keep its progress window open. The browser opens when the workspace and its local database are ready. A first compilation can take a few minutes; later starts reuse the installed dependencies and cached build.
 
-The app shows **DEVELOPMENT**. Use **Enter development workspace** if prompted. This is a synthetic owner in the local **CPL Development · Synthetic** company. Use fictional names and records here. Google and passkeys remain part of the hosted authentication design.
+The app shows **DEVELOPMENT**. Use **Enter development workspace** if prompted. The default identity opens the existing **CPL Development · Synthetic** company. For Phase 5, choose **Synthetic company owner Alpha** for Alder or **Synthetic company owner Beta** for Harbor, then enter or switch identity. The [Phase 5 walkthrough](docs/LOCAL_PHASE5_TESTING.md) identifies the saved fictional records and normal screen paths. These fixed local identities do not simulate production MFA. Google and passkeys remain part of the hosted authentication design.
 
 - **RUN-CPL-COMMAND-CENTER.cmd** opens the existing instance if it is already running.
 - **STOP-CPL-COMMAND-CENTER.cmd** stops the web app, local jobs and local database. Your test records are preserved.

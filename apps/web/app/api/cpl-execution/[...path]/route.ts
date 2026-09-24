@@ -90,6 +90,10 @@ export async function GET(request: Request, context: Context) {
         const current = await requireHostedSession(runtime, request);
         const tenant = commercialTenant(current, request);
         const repository = new SqlCplExecutionRepository(runtime.tenants);
+        if (path.length === 1 && path[0] === "assigned") {
+          if (new URL(request.url).search) throw new CommercialInputError();
+          return json(await repository.readAssignedWork(tenant));
+        }
         if (path.length === 1 && path[0] === "agenda")
           return json(
             await repository.readAgenda({

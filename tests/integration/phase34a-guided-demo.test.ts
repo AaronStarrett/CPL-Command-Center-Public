@@ -27,7 +27,7 @@ const SALES = DEMO_PERSONAS[1]!.id;
 const OPERATIONS = DEMO_PERSONAS[2]!.id;
 const EXECUTIVE = DEMO_PERSONAS[3]!.id;
 const INTEGRATION = DEMO_PERSONAS[4]!.id;
-const LATEST_MIGRATION = "0035_cpl_delivery_closeout.sql";
+const LATEST_MIGRATION = "0039_cpl_durable_inbound.sql";
 
 let database: PGliteDatabaseAdapter;
 let pipeline: InspectionReportPipeline;

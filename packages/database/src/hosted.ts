@@ -15,3 +15,8 @@ export * from "./cpl-report-repository.js";
 export * from "./cpl-automation-repository.js";
 
 export * from "./cpl-delivery-repository.js";
+export * from "./cpl-administration-repository.js";
+export * from "./cpl-company-repository.js";
+export * from "./cpl-integration-repository.js";
+export * from "./cpl-inbound-repository.js";
+export * from "./cpl-integration-ports.js";

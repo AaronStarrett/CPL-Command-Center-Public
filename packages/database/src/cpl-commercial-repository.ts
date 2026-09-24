@@ -382,7 +382,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
     projects: CplCommercialProject[];
     permissions: CplCommercialPermissions;
   }> {
-    return this.run(request, "records:read", async (executor, access) => {
+    return this.run(request, "commercial:read", async (executor, access) => {
       const proposals = await executor.query<Row>(
         "SELECT * FROM cpl_commercial_proposals WHERE organization_id=$1 ORDER BY updated_at DESC,id LIMIT 100",
         [access.organizationId],
@@ -421,21 +421,21 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
   async getProposal(
     request: CplTenantRequest & { proposalId: string },
   ): Promise<CplCommercialProposal> {
-    return this.run(request, "records:read", async (e, a) =>
+    return this.run(request, "commercial:read", async (e, a) =>
       this.detail(e, a, await this.row(e, a, request.proposalId)),
     );
   }
   async getTemplate(
     request: CplTenantRequest & { templateId: string },
   ): Promise<CplCommercialTemplate> {
-    return this.run(request, "records:read", (e, a) => this.template(e, a, request.templateId));
+    return this.run(request, "commercial:read", (e, a) => this.template(e, a, request.templateId));
   }
   async getProject(
     request: CplTenantRequest & { projectId: string },
   ): Promise<CplCommercialProject> {
     return this.run(
       request,
-      "records:read",
+      "commercial:read",
       async (e, a) => {
         const r = await e.query<Row>(
           "SELECT * FROM cpl_commercial_projects WHERE organization_id=$1 AND id=$2",
@@ -453,9 +453,13 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
     return this.run(request, "settings:write", async (e, a) => {
       const key = await mutation(e, a, "commercial.template", request.idempotencyKey, value);
       if (key.created) {
+        const pinned = {
+          ...value,
+          currency: value.currency ?? (await this.branding(e, a)).defaultCurrency,
+        };
         await e.query(
           "INSERT INTO cpl_commercial_templates(id,organization_id,name,snapshot,created_by_identity_id) VALUES($1,$2,$3,$4::jsonb,$5)",
-          [key.id, a.organizationId, value.name, boundedJson(value), a.identityId],
+          [key.id, a.organizationId, value.name, boundedJson(pinned), a.identityId],
         );
         await audit(e, a, "commercial.template.created", key.id);
       }
@@ -486,6 +490,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
       templateId?: string;
       legacyDraftId?: string;
       allowAdditional?: boolean;
+      legacyTemplateCurrency?: string;
       idempotencyKey: string;
     },
   ): Promise<CplCommercialProposal> {
@@ -502,6 +507,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
       templateId?: string;
       legacyDraftId?: string;
       allowAdditional?: boolean;
+      legacyTemplateCurrency?: string;
       idempotencyKey: string;
     },
   ): Promise<CplCommercialProposal> {
@@ -519,6 +525,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
       templateId,
       legacyDraftId,
       allowAdditional: request.allowAdditional === true,
+      legacyTemplateCurrency: request.legacyTemplateCurrency ?? null,
     });
     if (!key.created) return this.detail(e, a, await this.row(e, a, key.id));
     const source = await e.query<Row>(
@@ -557,6 +564,21 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
     }
     const branding = await this.branding(e, a),
       template = templateId ? await this.template(e, a, templateId) : null;
+    if (request.legacyTemplateCurrency !== undefined && (!template || template.currency))
+      fail("CPL_INVALID_INPUT");
+    // Preserved templates predate a currency pin. New-work currency changes must
+    // never silently reinterpret their prices. A saved copy pins it permanently.
+    if (
+      template &&
+      !template.currency &&
+      branding.defaultCurrency !== "USD" &&
+      !request.legacyTemplateCurrency
+    )
+      fail("CPL_TEMPLATE_CURRENCY_CONFIRMATION_REQUIRED");
+    const selectedCurrency = template
+      ? (template.currency ?? request.legacyTemplateCurrency ?? "USD")
+      : (lead.configuration?.catalog?.currency ?? branding.defaultCurrency);
+    const service = lead.configuration?.catalog;
     const content = normalizeCplCommercialContent(
       {
         ...template,
@@ -564,8 +586,20 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
         scope: legacy
           ? `Preserved legacy manual draft (version ${Number(legacy.version)})\n\n${String(legacy.content)}`
           : template?.scope || lead.details,
-        currency: branding.defaultCurrency,
-        lineItems: template?.catalog.map((item) => ({ ...item, quantity: "1" })) ?? [],
+        currency: selectedCurrency,
+        lineItems:
+          template?.catalog.map((item) => ({ ...item, quantity: "1" })) ??
+          (service?.unitPriceMinor != null
+            ? [
+                {
+                  description: service.description || service.name,
+                  serviceCode: service.code,
+                  quantity: "1",
+                  unit: service.unit,
+                  unitPriceMinor: service.unitPriceMinor,
+                },
+              ]
+            : []),
         discountMinor: 0,
         taxBasisPoints: 0,
         startDate: null,
@@ -584,6 +618,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
       fields,
       evidence: lead.evidence,
       capturedAt: new Date().toISOString(),
+      ...(lead.configuration ? { configuration: lead.configuration } : {}),
     };
     const inserted = await e.query<Row>(
       "INSERT INTO cpl_commercial_proposals(id,organization_id,reference,lead_id,legacy_draft_id,title,current_version,created_by_identity_id) VALUES($1,$2,$3,$4,$5,$6,1,$7) RETURNING *",
@@ -844,7 +879,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
   ): Promise<CplCommercialProjectSnapshot> {
     return this.run(
       request,
-      "records:read",
+      "commercial:read",
       async (e, a) => this.projectSnapshot(e, a, await this.row(e, a, request.proposalId)),
       ["proposal-builder", "award-to-project-launcher"],
     );
@@ -948,7 +983,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
   async getCustomerPreview(
     request: CplTenantRequest & { proposalId: string; version?: number },
   ): Promise<CplCommercialCustomerPreview> {
-    return this.run(request, "records:read", async (e, a) => {
+    return this.run(request, "commercial:read", async (e, a) => {
       const row = await this.row(e, a, request.proposalId);
       return {
         ...(await this.publicDocument(
@@ -980,7 +1015,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
   async getApprovedPdf(
     request: CplTenantRequest & { proposalId: string; version?: number },
   ): Promise<CplApprovedProposalPdf> {
-    return this.run(request, "records:read", async (e, a) => {
+    return this.run(request, "commercial:read", async (e, a) => {
       const row = await this.row(e, a, request.proposalId);
       return this.approvedDocument(
         e,
@@ -1049,7 +1084,7 @@ export class SqlCplCommercialRepository extends SqlCplIntakeRepository {
   async getPdfArtifact(
     request: CplTenantRequest & { proposalId: string; version: number },
   ): Promise<{ metadata: CplCommercialArtifact; bytes: Uint8Array }> {
-    return this.run(request, "records:read", async (e, a) => {
+    return this.run(request, "commercial:read", async (e, a) => {
       const row = await this.row(e, a, request.proposalId);
       const r = await e.query<Row>(
         "SELECT * FROM cpl_commercial_artifacts WHERE organization_id=$1 AND proposal_id=$2 AND version=$3",

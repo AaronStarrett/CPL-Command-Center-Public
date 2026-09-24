@@ -58,6 +58,35 @@ export function SourceSnapshot({
           {lead.requestedDeadlineAt?.slice(0, 10) || "Not recorded"}
         </dd>
       </dl>
+      {source.configuration ? (
+        <details className={css.source} open>
+          <summary>Captured company intake configuration</summary>
+          <p>Intake policy version {source.configuration.policyVersion}</p>
+          {source.configuration.catalog ? (
+            <p>
+              Service: {source.configuration.catalog.name} · {source.configuration.catalog.code} ·
+              revision {source.configuration.catalog.revision} ·{" "}
+              {source.configuration.catalog.currency}
+            </p>
+          ) : null}
+          {Object.entries(source.configuration.customValues).map(([id, value]) => (
+            <p key={id}>
+              <strong>
+                {source.configuration!.policy.customFields.find((field) => field.id === id)
+                  ?.label ?? "Previously captured field"}
+              </strong>
+              :{" "}
+              {value === null || value === ""
+                ? "Not answered"
+                : typeof value === "boolean"
+                  ? value
+                    ? "Yes"
+                    : "No"
+                  : value}
+            </p>
+          ))}
+        </details>
+      ) : null}
       <details className={css.source} open>
         <summary>Original source evidence ({source.evidence.length})</summary>
         {source.evidence.map((item) => (

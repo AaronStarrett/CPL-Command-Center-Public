@@ -6,6 +6,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./cpl-gmail": {
+      "types": "./src/cpl-gmail.ts",
+      "default": "./src/cpl-gmail.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"

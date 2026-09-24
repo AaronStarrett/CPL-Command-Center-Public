@@ -1,13 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { PgSqlDatabaseAdapter } from "../packages/database/src/pg-sql-adapter.js";
-import { migrateDatabase, verifyMigrations } from "../packages/database/src/migrations.js";
+import {
+  migrateDatabase,
+  verifyMigrations,
+  loadMigrations,
+} from "../packages/database/src/migrations.js";
 import {
   configureCplAutomationWorker,
+  configureCplIngestionWorker,
   configureHostedRuntimeRole,
   verifyHostedDatabaseRole,
 } from "../packages/database/src/hosted-database-role.js";
 import { processHostedJobs } from "../packages/database/src/hosted-workflow.js";
 import { CPL_MODULE_KEYS } from "../packages/database/src/tenant-repository.js";
+import { CPL_LOCAL_PERSONAS } from "../packages/security/src/local-development-personas.js";
+import { createCplIntegrationRuntime } from "../packages/database/src/cpl-integration-runtime.js";
+import type { CplIntegrationRepositoryOptions } from "../packages/database/src/cpl-integration-ports.js";
 
 type Connections = {
   operatorUrl: string;
@@ -39,7 +47,10 @@ function connect(value: string, role: string, name = "cpl_local_development") {
 }
 
 /** Operator-only local bootstrap. Never imported by the web app or Worker. */
-export async function prepareDevelopmentRuntime(connections: Connections) {
+export async function prepareDevelopmentRuntime(
+  connections: Connections,
+  integrationEnvironment: Readonly<Record<string, string | undefined>> = {},
+) {
   const bootstrap = connect(connections.bootstrapUrl, "cpl_local_operator", "postgres");
   try {
     const settings = (
@@ -66,6 +77,8 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
   const web = connect(connections.webUrl, "cpl_local_web");
   const worker = connect(connections.workerUrl, "cpl_local_worker");
   let ready = false;
+  let ingestion: CplIntegrationRepositoryOptions = { providerMode: "disabled" };
+  let expectedSchema: { id: string; checksum: string }[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | undefined;
   let stopped = false;
@@ -73,6 +86,7 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
   try {
     await migrateDatabase(admin);
     await verifyMigrations(admin);
+    expectedSchema = (await loadMigrations()).map(({ id, checksum }) => ({ id, checksum }));
     for (const [role, purpose, value] of [
       ["cpl_local_web", "web", connections.webUrl],
       ["cpl_local_worker", "worker", connections.workerUrl],
@@ -88,6 +102,7 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
     // The local runner explicitly opts into tenant recipe jobs after baseline
     // grants. Hosted HTTP workers retain their existing capability boundary.
     await configureCplAutomationWorker(admin, "cpl_local_worker");
+    await configureCplIngestionWorker(admin, "cpl_local_worker");
     await admin.execute(
       "CREATE TABLE IF NOT EXISTS cpl_local_development_marker(singleton BOOLEAN PRIMARY KEY CHECK(singleton), purpose TEXT NOT NULL CHECK(purpose='local-development')); INSERT INTO cpl_local_development_marker VALUES(TRUE,'local-development') ON CONFLICT DO NOTHING; REVOKE ALL ON cpl_local_development_marker FROM PUBLIC; GRANT SELECT ON cpl_local_development_marker TO cpl_local_web,cpl_local_worker;",
     );
@@ -127,6 +142,50 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
         ).rows.length
       )
         throw new Error("CPL_LOCAL_FIXTURE_SUSPENDED");
+      // Fixed local identities are operator-created after the exact cluster/role
+      // checks above. This never enrolls a real provider user or grants company
+      // membership. Existing statuses and profile data are deliberately retained.
+      for (const persona of CPL_LOCAL_PERSONAS) {
+        if (persona.key === "legacy-owner") continue;
+        const inserted = await tx.query<{ id: string }>(
+          "INSERT INTO cpl_identities(id,issuer,subject,display_name,email,email_verified,hosted_domain) VALUES($1,'https://local.cpl.invalid',$2,$3,$4,TRUE,NULL) ON CONFLICT(issuer,subject) DO NOTHING RETURNING id",
+          [randomUUID(), persona.subject, persona.label, persona.email],
+        );
+        const fixture = (
+          await tx.query<{
+            id: string;
+            email: string;
+            email_verified: boolean;
+            hosted_domain: string | null;
+          }>(
+            "SELECT id,email,email_verified,hosted_domain FROM cpl_identities WHERE issuer='https://local.cpl.invalid' AND subject=$1",
+            [persona.subject],
+          )
+        ).rows[0];
+        if (
+          !fixture ||
+          fixture.email !== persona.email ||
+          !fixture.email_verified ||
+          fixture.hosted_domain !== null
+        )
+          throw new Error("CPL_LOCAL_FIXTURE_REFUSED");
+        if (inserted.rows.length)
+          await tx.query(
+            "INSERT INTO cpl_auth_audit_events(id,identity_id,action) VALUES($1,$2,'local-development.synthetic-identity-created')",
+            [randomUUID(), fixture.id],
+          );
+        if (persona.platformOperator) {
+          const granted = await tx.query(
+            "INSERT INTO cpl_platform_administrators(identity_id,status) VALUES($1,'active') ON CONFLICT DO NOTHING RETURNING identity_id",
+            [fixture.id],
+          );
+          if (granted.rows.length)
+            await tx.query(
+              "INSERT INTO cpl_auth_audit_events(id,identity_id,action) VALUES($1,$2,'local-development.synthetic-platform-operator-created')",
+              [randomUUID(), fixture.id],
+            );
+        }
+      }
       // Initial synthetic workspace only. Subsequent launches never reset owner edits.
       const present = await tx.query(
         "SELECT id FROM cpl_organizations WHERE slug='cpl-development'",
@@ -161,6 +220,11 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
     });
     await verifyHostedDatabaseRole(web, "web");
     await verifyHostedDatabaseRole(worker, "worker");
+    ingestion = await createCplIntegrationRuntime({
+      database: worker,
+      origin: "http://127.0.0.1:3400",
+      environment: integrationEnvironment,
+    });
     ready = true;
   } finally {
     await admin.close();
@@ -175,6 +239,7 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
         const result = await processHostedJobs(worker, {
           claimOwner: "local-development",
           limit: 1,
+          ingestion,
         });
         lastJobState = result.failed
           ? "failed"
@@ -193,6 +258,7 @@ export async function prepareDevelopmentRuntime(connections: Connections) {
     })();
   };
   return {
+    expectedSchema,
     startJobs: () => {
       if (!running && !stopped) cycle();
     },
